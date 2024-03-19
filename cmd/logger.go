@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -43,23 +44,26 @@ func run(cmd *cobra.Command, args []string) {
 	password := args[1]
 
 	// App will run until cancelled by user (e.g. ctrl-c)
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	serverUrl, err := url.Parse(fmt.Sprintf("mqtt://%s:%s@localhost:1883", username, password))
+	serverUrl, err := url.Parse("mqtt://localhost:1883")
 	if err != nil {
+		fmt.Printf("Url parse Error: %v\n", err)
 		panic(err)
 	}
 
 	clientConfig := autopaho.ClientConfig{
 		ServerUrls: []*url.URL{serverUrl},
+		ConnectUsername: username,
+		ConnectPassword: []byte(password),
 		KeepAlive:  20,
 		CleanStartOnInitialConnection: false,
 		SessionExpiryInterval: 60,
 		OnConnectionUp: func(connectionManager *autopaho.ConnectionManager, connectionAck *paho.Connack) {
 			fmt.Println("mqtt connection up")
 
-			if _, err := connectionManager.Subscribe(context.Background(), &paho.Subscribe{
+			if _, err := connectionManager.Subscribe(ctx, &paho.Subscribe{
 				Subscriptions: []paho.SubscribeOptions{
 					{Topic: accessListTopic, QoS: 2},
 				},
@@ -100,10 +104,20 @@ func run(cmd *cobra.Command, args []string) {
 
 	serverConnection, err := autopaho.NewConnection(ctx, clientConfig)
 	if err != nil {
-		panic(err)
+		fmt.Printf("Server connection error: %v\n", err)
+		if errors.Is(err, context.Canceled) {
+			return
+		} else {
+			panic(err)
+		}
 	}
 	if err = serverConnection.AwaitConnection(ctx); err != nil {
-		panic(err)
+		fmt.Printf("Server await connection error: %v\n", err)
+		if errors.Is(err, context.Canceled) {
+			return
+		} else {
+			panic(err)
+		}
 	}
 
 	ticker := time.NewTicker(time.Second)
@@ -122,6 +136,7 @@ func run(cmd *cobra.Command, args []string) {
 			}
 			continue
 		case <-ctx.Done():
+			fmt.Println("ctx.Done")
 		}
 		break
 	}

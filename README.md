@@ -11,14 +11,14 @@ Contains command for creating a mosquitto `passwd_file` and managing that file's
 ```bash
 # Create a new passwd file within the provided `<localdir>` and it'll contain an entry the the provided `<username>`
 # NOTE: `-c` will override the file if it already exists! Use with caution.
-podman run -it --rm -v ./<localdir>:/opt  eclipse-mosquitto:2 mosquitto_passwd -c /mosquitto/passwd_file <username>
+podman run -it --rm -v ./<localdir>:/opt eclipse-mosquitto:2 mosquitto_passwd -c /opt/passwd_file <username>
 ```
 
 ### Add New User
 
 ```bash
 # Add the provided user `<username>` to the passwd file located at `<localdir>`
-podman run -it --rm -v ./<localdir>:/opt  eclipse-mosquitto:2 mosquitto_passwd /mosquitto/passwd_file <username>
+podman run -it --rm -v ./<localdir>/passwd_file:/opt/passwd_file eclipse-mosquitto:2 mosquitto_passwd /opt/passwd_file <username>
 ```
 
 ## Development & Testing
@@ -29,7 +29,7 @@ podman run -it --rm -v ./<localdir>:/opt  eclipse-mosquitto:2 mosquitto_passwd /
 
 ```bash
 # Add new user to file
-podman run -it --rm -v ./mosquitto:/opt eclipse-mosquitto:2 mosquitto_passwd /mosquitto/passwd_file <username>
+podman run -it --rm -v ./mosquitto/passwd_file:/opt/passwd_file eclipse-mosquitto:2 mosquitto_passwd /opt/passwd_file <username>
 ```
 
 > WARNING! Do **not** use the provide password file for *any* environment save for testing & development!
