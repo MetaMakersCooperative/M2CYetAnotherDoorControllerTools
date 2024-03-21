@@ -23,25 +23,25 @@ var loggerCmd = &cobra.Command{
 	Run: run,
 }
 
+var seconds int
+var username string
+var password string
+
 func init() {
 	porterCmd.AddCommand(loggerCmd)
 
-	loggerCmd.PersistentFlags().String("username", "", "Username used to authenicate with the MQTT Broker")
-	loggerCmd.PersistentFlags().String("password", "", "Password used to authenicate with the MQTT Broker")
+	loggerCmd.Flags().IntVarP(&seconds, "seconds", "s", 10, "Seconds to wait before publishing new unlock")
+	loggerCmd.Flags().StringVarP(&username, "username", "u", "", "Username used to authenicate with the MQTT Broker")
+	loggerCmd.Flags().StringVarP(&password, "password", "p", "", "Password used to authenicate with the MQTT Broker")
 	loggerCmd.MarkFlagRequired("username")
 	loggerCmd.MarkFlagRequired("password")
 }
 
-const clientID = "porter"
 const unlockTopic = "door_controller/unlock"
 const accessListTopic = "door_controller/access_list"
 
 func run(cmd *cobra.Command, args []string) {
 	fmt.Println("logger called")
-	fmt.Printf("Args: %v", args)
-
-	username := args[0]
-	password := args[1]
 
 	// App will run until cancelled by user (e.g. ctrl-c)
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
@@ -77,7 +77,7 @@ func run(cmd *cobra.Command, args []string) {
 			fmt.Printf("error whilst attempting connection: %s\n", err)
 		},
 		ClientConfig: paho.ClientConfig{
-			ClientID: clientID,
+			ClientID: username,
 			OnPublishReceived: []func(paho.PublishReceived) (bool, error){
 				func(publishReveived paho.PublishReceived) (bool, error) {
 					fmt.Printf(
@@ -120,13 +120,13 @@ func run(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(time.Second * time.Duration(seconds))
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
 			if _, err = serverConnection.Publish(ctx, &paho.Publish{
-				QoS:     1,
+				QoS:     2,
 				Topic:   unlockTopic,
 				Payload: []byte("1234567|" + time.Now().UTC().String()),
 			}); err != nil {
