@@ -29,6 +29,18 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
 
+  migrate:
+    image: migrate/migrate:v4.17.0
+    environment:
+      MYSQL_ROOT_PASSWORD: HeL!@SuP3rSEcuRe
+      MYSQL_DATABASE: access_system
+      MYSQL_USER: mellon
+      MYSQL_PASSWORD: Y0USl-l@lL!P@s5
+      DB_CONNECTION_URL: mellon:Y0USl-l@lL!P@s5@tcp(database:3306)/access_system?multiStatements=true
+    entrypoint: sleep infinity
+    volumes:
+      - ./migrations:/migrations
+
 volumes:
   mosquitto_log: {}
   mosquitto_data: {}

@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS `accesscontrol`;
+DROP TABLE IF EXISTS `member`;
+DROP TABLE IF EXISTS `membermonth`;
+DROP TABLE IF EXISTS `payment`;
+DROP TABLE IF EXISTS `receipt`;
