@@ -18,29 +18,19 @@ import (
 // loggerCmd represents the logger command
 var loggerCmd = &cobra.Command{
 	Use:   "logger",
-	Short: "",
-	Long: ``,
-	Run: run,
+	Short: "Minics a door controller for easier testing",
+	Long:  "Minics what a door controller would publish for easier testing",
+	Run:   runLogger,
 }
 
 var seconds int
-var username string
-var password string
 
 func init() {
 	porterCmd.AddCommand(loggerCmd)
-
 	loggerCmd.Flags().IntVarP(&seconds, "seconds", "s", 10, "Seconds to wait before publishing new unlock")
-	loggerCmd.Flags().StringVarP(&username, "username", "u", "", "Username used to authenicate with the MQTT Broker")
-	loggerCmd.Flags().StringVarP(&password, "password", "p", "", "Password used to authenicate with the MQTT Broker")
-	loggerCmd.MarkFlagRequired("username")
-	loggerCmd.MarkFlagRequired("password")
 }
 
-const unlockTopic = "door_controller/unlock"
-const accessListTopic = "door_controller/access_list"
-
-func run(cmd *cobra.Command, args []string) {
+func runLogger(cmd *cobra.Command, args []string) {
 	fmt.Println("logger called")
 
 	// App will run until cancelled by user (e.g. ctrl-c)
@@ -54,12 +44,12 @@ func run(cmd *cobra.Command, args []string) {
 	}
 
 	clientConfig := autopaho.ClientConfig{
-		ServerUrls: []*url.URL{serverUrl},
-		ConnectUsername: username,
-		ConnectPassword: []byte(password),
-		KeepAlive:  20,
+		ServerUrls:                    []*url.URL{serverUrl},
+		ConnectUsername:               username,
+		ConnectPassword:               []byte(password),
+		KeepAlive:                     20,
 		CleanStartOnInitialConnection: false,
-		SessionExpiryInterval: 60,
+		SessionExpiryInterval:         60,
 		OnConnectionUp: func(connectionManager *autopaho.ConnectionManager, connectionAck *paho.Connack) {
 			fmt.Println("mqtt connection up")
 
@@ -89,7 +79,7 @@ func run(cmd *cobra.Command, args []string) {
 					return true, nil
 				},
 			},
-			OnClientError: func(err error) { 
+			OnClientError: func(err error) {
 				fmt.Printf("client error: %s\n", err)
 			},
 			OnServerDisconnect: func(disconnect *paho.Disconnect) {
