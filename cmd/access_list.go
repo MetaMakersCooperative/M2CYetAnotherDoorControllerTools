@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"net/url"
 	"os"
 	"os/signal"
@@ -44,15 +43,7 @@ type AccessControl struct {
 }
 
 func runAccessList(cmd *cobra.Command, args []string) {
-	logger := log.Default()
-	logger.SetPrefix("INFO: ")
-	logger.SetOutput(os.Stdout)
-
-	log := func(format string, args ...any) {
-		logger.Output(2, fmt.Sprintf(format, args...))
-	}
-
-	log("access_list called")
+	logger.Info("list called")
 	// App will run until cancelled by user (e.g. ctrl-c)
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -63,7 +54,7 @@ func runAccessList(cmd *cobra.Command, args []string) {
 
 	db, err := sql.Open("mysql", dbUri)
 	if err != nil {
-		log("failed to connect to mysql database")
+		logger.Info("failed to connect to mysql database")
 		return
 	}
 	defer db.Close()
@@ -89,7 +80,7 @@ func runAccessList(cmd *cobra.Command, args []string) {
 
 		var list string
 		for idx, code := range accessCodes {
-			log("Adding card %d to list", code.CardNum)
+			logger.Info("Adding card %d to list", code.CardNum)
 			list += fmt.Sprintf("%d", code.CardNum)
 			if idx < len(accessCodes)-1 {
 				list += "\n"
@@ -101,7 +92,7 @@ func runAccessList(cmd *cobra.Command, args []string) {
 
 	serverUrl, err := url.Parse("mqtt://localhost:1883")
 	if err != nil {
-		log("Url parse Error: %v\n", err)
+		logger.Error("Url parse Error: %v\n", err)
 		return
 	}
 
@@ -113,12 +104,12 @@ func runAccessList(cmd *cobra.Command, args []string) {
 		CleanStartOnInitialConnection: true,
 		SessionExpiryInterval:         60,
 		OnConnectionUp: func(connectionManager *autopaho.ConnectionManager, connectionAck *paho.Connack) {
-			log("mqtt connection up")
+			logger.Info("mqtt connection up")
 
 			timeout := time.NewTimer(time.Second * 30)
 			select {
 			case <-timeout.C:
-				log("Reached timeout. Aborting")
+				logger.Warn("Reached timeout. Aborting")
 			case list := <-cardList:
 				if _, err = connectionManager.Publish(ctx, &paho.Publish{
 					QoS:     2,
@@ -126,32 +117,32 @@ func runAccessList(cmd *cobra.Command, args []string) {
 					Payload: []byte(list),
 				}); err != nil {
 					if ctx.Err() == nil {
-						log("Failed to publish: %v", err)
+						logger.Error("Failed to publish: %v", err)
 					} else {
-						log("Publish cancelled by context: %v", err)
+						logger.Error("Publish cancelled by context: %v", err)
 					}
 				}
 			case err := <-queryErr:
-				log("Failed to retreive data from database: %v", err)
+				logger.Error("Failed to retreive data from database: %v", err)
 			}
 
 			done <- true
 		},
 		OnConnectError: func(err error) {
-			log("error whilst attempting connection: %s\n", err)
+			logger.Error("error whilst attempting connection: %s\n", err)
 			done <- true
 		},
 		ClientConfig: paho.ClientConfig{
 			ClientID: username,
 			OnClientError: func(err error) {
-				log("client error: %s\n", err)
+				logger.Error("client error: %s\n", err)
 				done <- true
 			},
 			OnServerDisconnect: func(disconnect *paho.Disconnect) {
 				if disconnect.Properties != nil {
-					log("server requested disconnect: %s\n", disconnect.Properties.ReasonString)
+					logger.Warn("server requested disconnect: %s\n", disconnect.Properties.ReasonString)
 				} else {
-					log("server requested disconnect; reason code: %d\n", disconnect.ReasonCode)
+					logger.Warn("server requested disconnect; reason code: %d\n", disconnect.ReasonCode)
 				}
 			},
 		},
@@ -159,28 +150,28 @@ func runAccessList(cmd *cobra.Command, args []string) {
 
 	serverConnection, err := autopaho.NewConnection(ctx, clientConfig)
 	if err != nil {
-		log("Server connection error: %v\n", err)
+		logger.Warn("Server connection error: %v\n", err)
 		if errors.Is(err, context.Canceled) {
 			return
 		} else {
-			log("MQTT connection error: %v", err)
+			logger.Warn("MQTT connection error: %v", err)
 		}
 	}
 	if err = serverConnection.AwaitConnection(ctx); err != nil {
-		log("Server await connection error: %v\n", err)
+		logger.Warn("Server await connection error: %v\n", err)
 		if errors.Is(err, context.Canceled) {
 			return
 		} else {
-			log("MQTT connection error: %v", err)
+			logger.Warn("MQTT connection error: %v", err)
 		}
 	}
 
 	select {
 	case <-done:
-		log("Finished")
+		logger.Info("Finished")
 		serverConnection.Disconnect(ctx)
 	case <-ctx.Done():
-		log("signal caught - exiting")
+		logger.Info("signal caught - exiting")
 	}
 
 	<-serverConnection.Done()

@@ -6,8 +6,8 @@ import (
 
 var porterCmd = &cobra.Command{
 	Use:   "porter",
-	Short: "",
-	Long:  ``,
+	Short: "Collection of management tools for M2C door controllers",
+	Long:  "Collection of management tools for M2C door controllers",
 }
 
 var username string

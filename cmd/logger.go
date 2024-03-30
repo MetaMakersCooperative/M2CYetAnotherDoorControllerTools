@@ -1,136 +1,32 @@
 package cmd
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"net/url"
+	"log"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
-
-	"github.com/eclipse/paho.golang/autopaho"
-	"github.com/eclipse/paho.golang/paho"
-	"github.com/spf13/cobra"
 )
 
-// loggerCmd represents the logger command
-var loggerCmd = &cobra.Command{
-	Use:   "logger",
-	Short: "Minics a door controller for easier testing",
-	Long:  "Minics what a door controller would publish for easier testing",
-	Run:   runLogger,
+type Logger struct {
+	log *log.Logger
 }
 
-var seconds int
-
-func init() {
-	porterCmd.AddCommand(loggerCmd)
-	loggerCmd.Flags().IntVarP(&seconds, "seconds", "s", 10, "Seconds to wait before publishing new unlock")
+func (logger *Logger) Info(format string, args ...any) {
+	logger.log.Output(2, fmt.Sprintf("INFO: "+format, args...))
 }
 
-func runLogger(cmd *cobra.Command, args []string) {
-	fmt.Println("logger called")
-
-	// App will run until cancelled by user (e.g. ctrl-c)
-	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	serverUrl, err := url.Parse("mqtt://localhost:1883")
-	if err != nil {
-		fmt.Printf("Url parse Error: %v\n", err)
-		panic(err)
-	}
-
-	clientConfig := autopaho.ClientConfig{
-		ServerUrls:                    []*url.URL{serverUrl},
-		ConnectUsername:               username,
-		ConnectPassword:               []byte(password),
-		KeepAlive:                     20,
-		CleanStartOnInitialConnection: false,
-		SessionExpiryInterval:         60,
-		OnConnectionUp: func(connectionManager *autopaho.ConnectionManager, connectionAck *paho.Connack) {
-			fmt.Println("mqtt connection up")
-
-			if _, err := connectionManager.Subscribe(ctx, &paho.Subscribe{
-				Subscriptions: []paho.SubscribeOptions{
-					{Topic: accessListTopic, QoS: 2},
-				},
-			}); err != nil {
-				fmt.Printf("failed to subscribe (%s). This is likely to mean no messages will be received.", err)
-			}
-
-			fmt.Println("mqtt subscription made")
-		},
-		OnConnectError: func(err error) {
-			fmt.Printf("error whilst attempting connection: %s\n", err)
-		},
-		ClientConfig: paho.ClientConfig{
-			ClientID: username,
-			OnPublishReceived: []func(paho.PublishReceived) (bool, error){
-				func(publishReveived paho.PublishReceived) (bool, error) {
-					fmt.Printf(
-						"received message on topic %s; body: %s (retain: %t)\n",
-						publishReveived.Packet.Topic,
-						publishReveived.Packet.Payload,
-						publishReveived.Packet.Retain,
-					)
-					return true, nil
-				},
-			},
-			OnClientError: func(err error) {
-				fmt.Printf("client error: %s\n", err)
-			},
-			OnServerDisconnect: func(disconnect *paho.Disconnect) {
-				if disconnect.Properties != nil {
-					fmt.Printf("server requested disconnect: %s\n", disconnect.Properties.ReasonString)
-				} else {
-					fmt.Printf("server requested disconnect; reason code: %d\n", disconnect.ReasonCode)
-				}
-			},
-		},
-	}
-
-	serverConnection, err := autopaho.NewConnection(ctx, clientConfig)
-	if err != nil {
-		fmt.Printf("Server connection error: %v\n", err)
-		if errors.Is(err, context.Canceled) {
-			return
-		} else {
-			panic(err)
-		}
-	}
-	if err = serverConnection.AwaitConnection(ctx); err != nil {
-		fmt.Printf("Server await connection error: %v\n", err)
-		if errors.Is(err, context.Canceled) {
-			return
-		} else {
-			panic(err)
-		}
-	}
-
-	ticker := time.NewTicker(time.Second * time.Duration(seconds))
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			if _, err = serverConnection.Publish(ctx, &paho.Publish{
-				QoS:     2,
-				Topic:   unlockTopic,
-				Payload: []byte("1234567|" + time.Now().UTC().String()),
-			}); err != nil {
-				if ctx.Err() == nil {
-					panic(err)
-				}
-			}
-			continue
-		case <-ctx.Done():
-			fmt.Println("ctx.Done")
-		}
-		break
-	}
-
-	fmt.Println("signal caught - exiting")
-	<-serverConnection.Done()
+func (logger *Logger) Warn(format string, args ...any) {
+	logger.log.Output(2, fmt.Sprintf("WARN: "+format, args...))
 }
+
+func (logger *Logger) Error(format string, args ...any) {
+	logger.log.Output(2, fmt.Sprintf("error: "+format, args...))
+}
+
+func New() *Logger {
+	logger := &Logger{log: log.Default()}
+	logger.log.SetPrefix("PORTER: ")
+	logger.log.SetOutput(os.Stdout)
+	return logger
+}
+
+var logger = New()
