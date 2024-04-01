@@ -43,7 +43,6 @@ type AccessControl struct {
 }
 
 func runAccessList(cmd *cobra.Command, args []string) {
-	logger.Info("list called")
 	// App will run until cancelled by user (e.g. ctrl-c)
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -54,7 +53,7 @@ func runAccessList(cmd *cobra.Command, args []string) {
 
 	db, err := sql.Open("mysql", dbUri)
 	if err != nil {
-		logger.Info("failed to connect to mysql database")
+		logger.Error("failed to connect to mysql database: %v", err)
 		return
 	}
 	defer db.Close()

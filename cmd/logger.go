@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 )
@@ -22,11 +23,18 @@ func (logger *Logger) Error(format string, args ...any) {
 	logger.log.Output(2, fmt.Sprintf("error: "+format, args...))
 }
 
-func New() *Logger {
-	logger := &Logger{log: log.Default()}
-	logger.log.SetPrefix("PORTER: ")
-	logger.log.SetOutput(os.Stdout)
+func NewLogger(w io.Writer, usePrefix bool, useTimeStamp bool) *Logger {
+	var logger *Logger
+	if useTimeStamp {
+		logger = &Logger{log: log.Default()}
+		logger.log.SetOutput(w)
+	} else {
+		logger = &Logger{log: log.New(w, "", log.Ltime)}
+	}
+	if usePrefix {
+		logger.log.SetPrefix("PORTER: ")
+	}
 	return logger
 }
 
-var logger = New()
+var logger = NewLogger(os.Stdout, true, true)
