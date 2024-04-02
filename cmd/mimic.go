@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
+	"github.com/muesli/reflow/wordwrap"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -28,20 +29,32 @@ var mimicCmd = &cobra.Command{
 	Run:   runMimic,
 }
 
+var mqttUri string
+
 func init() {
 	porterCmd.AddCommand(mimicCmd)
+
+	mimicCmd.Flags().StringVarP(&mqttUri, "mqtt_uri", "m", "", "Uri used to connect to the mqtt broker")
+	mimicCmd.MarkFlagRequired("mqtt_uri")
 }
+
+var fileLogger *Logger
 
 type mqttMessage struct {
 	topic   string
 	payload string
 }
 
-type mqttConnection struct {
+type mqttStatus struct {
 	reason    string
 	code      byte
 	err       error
 	connected bool
+}
+
+type urlParseError struct {
+	uri string
+	err error
 }
 
 type mqttServerConnection struct {
@@ -124,16 +137,13 @@ type logsWindow struct {
 	logs      []string
 	err       error
 	logBuffer *bytes.Buffer
-	viewPort  viewport.Model
-	window
-}
-
-type documentWindow struct {
+	viewport  viewport.Model
 	window
 }
 
 func (logsWindow *logsWindow) Update() {
-	logMessage := []rune("")
+	logMessage := bytes.NewBuffer([]byte(""))
+	totalSize := 0
 	for {
 		r, _, err := logsWindow.logBuffer.ReadRune()
 		if err != nil {
@@ -146,17 +156,40 @@ func (logsWindow *logsWindow) Update() {
 		if r == '\r' || r == '\n' {
 			break
 		}
-		logMessage = append(logMessage, r)
+		totalSize += 1
+		logMessage.WriteRune(r)
 	}
-	if len(logMessage) > 0 {
-		if len(logsWindow.logs) > 0 && logsWindow.GetInnerHeight() <= len(logsWindow.logs) {
-			logsWindow.logs = logsWindow.logs[1:]
-		}
-		logsWindow.logs = append(logsWindow.logs, string(logMessage))
+	if totalSize == 0 {
+		return
 	}
+	if len(logsWindow.logs) == 200 {
+		logsWindow.logs = logsWindow.logs[1:]
+	}
+
+	logsWindow.logs = append(logsWindow.logs, logMessage.String()+"\n")
+}
+
+func (logsWindow *logsWindow) Render() string {
+	cursor := 0
+	text := ""
+	for cursor < len(logsWindow.logs) {
+		logWordWrapper := wordwrap.NewWriter(logsWindow.GetInnerWidth() - 1)
+		logWordWrapper.Breakpoints = []rune{' '}
+		logWordWrapper.Newline = []rune{'\n'}
+		logWordWrapper.Write([]byte(logsWindow.logs[cursor]))
+		logWordWrapper.Close()
+		text += logWordWrapper.String()
+		cursor += 1
+	}
+	return text
+}
+
+type documentWindow struct {
+	window
 }
 
 type mimicModel struct {
+	err                  error
 	serverConnection     *autopaho.ConnectionManager
 	ctx                  context.Context
 	logger               Logger
@@ -164,25 +197,26 @@ type mimicModel struct {
 	logsWindow           logsWindow
 	statusWindow         statusWindow
 	mqttMessages         chan mqttMessage
-	mqttConnectionStatus chan mqttConnection
+	mqttConnectionStatus chan mqttStatus
 }
 
 func initMinicModel(ctx context.Context) *mimicModel {
-
-	s := spinner.New()
-	s.Spinner = spinner.Dot
-	s.Style = spinnerStyle
-
-	logBuf := bytes.NewBuffer([]byte(""))
 	physicalWidth, physicalHeight, err := term.GetSize(int(os.Stdout.Fd()))
 	if err != nil {
 		panic(err)
 	}
 
+	statusSpinnger := spinner.New()
+	statusSpinnger.Spinner = spinner.Dot
+	statusSpinnger.Style = spinnerStyle
+
+	logBuf := bytes.NewBuffer([]byte(""))
+
 	model := mimicModel{
+		err:                  nil,
 		ctx:                  ctx,
 		logger:               *NewLogger(logBuf, false, false),
-		mqttConnectionStatus: make(chan mqttConnection, 5),
+		mqttConnectionStatus: make(chan mqttStatus, 5),
 		mqttMessages:         make(chan mqttMessage, 5),
 		serverConnection:     nil,
 		documentWindow: documentWindow{
@@ -197,7 +231,7 @@ func initMinicModel(ctx context.Context) *mimicModel {
 		logsWindow: logsWindow{
 			logs:      make([]string, 0),
 			logBuffer: logBuf,
-			viewPort:  viewport.New(0, 0),
+			viewport:  viewport.New(0, 0),
 			window: window{
 				width:   0,
 				height:  0,
@@ -207,7 +241,7 @@ func initMinicModel(ctx context.Context) *mimicModel {
 			},
 		},
 		statusWindow: statusWindow{
-			spinner:     s,
+			spinner:     statusSpinnger,
 			isConnected: false,
 			initialized: false,
 			window: window{
@@ -243,60 +277,70 @@ func (model *mimicModel) UpdateDimensions(width int, height int) {
 	model.logsWindow.SetWidth(innerWidth * 2)
 	model.logsWindow.SetHeight(innerHeight)
 
-	model.logsWindow.viewPort.Width = model.logsWindow.GetInnerWidth()
-	model.logsWindow.viewPort.Height = model.logsWindow.GetInnerHeight()
+	model.logsWindow.viewport.Height = model.logsWindow.GetInnerHeight()
+	model.logsWindow.viewport.Width = model.logsWindow.GetInnerWidth()
 }
 
 func (model mimicModel) Init() tea.Cmd {
 	return tea.Batch(
 		initConnection(model.ctx, model.mqttConnectionStatus, model.mqttMessages),
 		waitForStatus(model.mqttConnectionStatus),
+		model.statusWindow.spinner.Tick,
 	)
 }
 
 func (model mimicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	model.logsWindow.Update()
-	model.logsWindow.viewPort.SetContent(strings.Join(model.logsWindow.logs, "\n"))
+
+	cmds := make([]tea.Cmd, 1)
+
+	var viewportCmd tea.Cmd
+	model.logsWindow.viewport, viewportCmd = model.logsWindow.viewport.Update(msg)
+	cmds = append(cmds, viewportCmd)
+	isAtBottom := model.logsWindow.viewport.AtBottom()
+	model.logsWindow.viewport.SetContent(model.logsWindow.Render())
+	if isAtBottom {
+		model.logsWindow.viewport.GotoBottom()
+	}
 
 	switch msg := msg.(type) {
+	case urlParseError:
+		model.logger.Error("Failed to parse url: %s - Error: ", msg.uri, msg.err)
 	case mqttServerConnection:
 		if msg.err != nil {
 			model.logger.Error("Failed to create connection to MQTT Broker: %v", msg.err)
-			return model, nil
+			cmds = append(cmds, waitForStatus(model.mqttConnectionStatus))
+			break
 		}
 		model.statusWindow.initialized = true
 		model.serverConnection = msg.connnection
-		return model, model.statusWindow.spinner.Tick
-	case mqttConnection:
-		if msg.err != nil {
-			model.statusWindow.err = msg.err
-			if msg.code == 254 {
-				model.logger.Error("Failed to connect to MQTT Broker: %v", msg.err)
-				return model, nil
-			} else if msg.code == 255 {
-				model.logger.Error("MQTT Client error: %v", msg.err)
-				return model, nil
-			}
-			model.logger.Error("MQTT disconnect with reason: %s - code: %d", msg.reason, msg.code)
-			return model, waitForStatus(model.mqttConnectionStatus)
-		}
-
+		cmds = append(cmds, model.statusWindow.spinner.Tick)
+	case mqttStatus:
 		model.statusWindow.isConnected = msg.connected
-		if msg.connected {
+		if msg.err == nil && msg.connected {
 			model.logger.Info("Connected to MQTT Broker")
-			return model, tea.Batch(
+			cmds = append(
+				cmds,
 				subscribeToAccessList(model.serverConnection, model.ctx),
 				subscribeToHealthCheck(model.serverConnection, model.ctx),
 				waitForStatus(model.mqttConnectionStatus),
 				waitForMessage(model.mqttMessages),
 			)
+			break
 		}
-
-		return model, waitForStatus(model.mqttConnectionStatus)
+		model.statusWindow.err = msg.err
+		if msg.code == 254 {
+			model.logger.Error("Failed to connect to MQTT Broker: %v", msg.err)
+		} else if msg.code == 255 {
+			model.logger.Error("MQTT Client error: %v", msg.err)
+		} else {
+			model.logger.Error("MQTT disconnect with reason: %s - code: %d", msg.reason, msg.code)
+		}
+		cmds = append(cmds, waitForStatus(model.mqttConnectionStatus))
 	case mqttMessage:
 		model.logger.Info("Received message from: %s", msg.topic)
 		model.logger.Info("Payload is: %s", msg.payload)
-		return model, waitForMessage(model.mqttMessages)
+		cmds = append(cmds, waitForMessage(model.mqttMessages))
 	case publishMessage:
 		if msg.err != nil {
 			model.logger.Error("Failed to publish to: %s - Error: %v", msg.topic, msg.err)
@@ -318,16 +362,12 @@ func (model mimicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return model, tea.Quit
 		}
-	default:
-		var (
-			spinnerCmd  tea.Cmd
-			viewPortCmd tea.Cmd
-		)
+	case spinner.TickMsg:
+		var spinnerCmd tea.Cmd
 		model.statusWindow.spinner, spinnerCmd = model.statusWindow.spinner.Update(msg)
-		model.logsWindow.viewPort, viewPortCmd = model.logsWindow.viewPort.Update(msg)
-		return model, tea.Batch(spinnerCmd, viewPortCmd)
+		cmds = append(cmds, spinnerCmd)
 	}
-	return model, nil
+	return model, tea.Batch(cmds...)
 }
 
 func (model mimicModel) View() string {
@@ -344,10 +384,14 @@ func (model mimicModel) View() string {
 	doc := strings.Builder{}
 
 	var status string
-	if !model.statusWindow.isConnected {
-		status = fmt.Sprintf("%s Awaiting Connection", model.statusWindow.spinner.View())
+	if model.err != nil {
+		status = fmt.Sprintf("%s Failed to start connection manager", model.statusWindow.spinner.View())
+	} else if model.serverConnection == nil {
+		status = fmt.Sprintf("%s Starting connected manager", model.statusWindow.spinner.View())
+	} else if !model.statusWindow.isConnected {
+		status = fmt.Sprintf("%s Attempting to connect", model.statusWindow.spinner.View())
 	} else {
-		status = fmt.Sprintf("%s MQTT Connected!", model.statusWindow.spinner.View())
+		status = fmt.Sprintf("%s Connected to MQTT Broker", model.statusWindow.spinner.View())
 	}
 
 	left := leftPanelStyle.
@@ -382,7 +426,7 @@ func (model mimicModel) View() string {
 		PaddingBottom(model.logsWindow.padding.bottom).
 		PaddingRight(model.logsWindow.padding.right).
 		Align(lipgloss.Left).
-		Render(model.logsWindow.viewPort.View())
+		Render(model.logsWindow.viewport.View())
 
 	doc.WriteString(lipgloss.JoinHorizontal(
 		lipgloss.Top,
@@ -395,13 +439,13 @@ func (model mimicModel) View() string {
 	return docStyle.Render(doc.String())
 }
 
-func initConnection(ctx context.Context, mqttConnectionStatus chan mqttConnection, mqttMessages chan mqttMessage) tea.Cmd {
+func initConnection(ctx context.Context, mqttConnectionStatus chan mqttStatus, mqttMessages chan mqttMessage) tea.Cmd {
 	return func() tea.Msg {
-		serverUrl, err := url.Parse("mqtt://localhost:1883")
+		serverUrl, err := url.Parse(mqttUri)
 		if err != nil {
-			return mqttServerConnection{
-				connnection: nil,
-				err:         err,
+			return urlParseError{
+				uri: mqttUri,
+				err: err,
 			}
 		}
 
@@ -412,11 +456,12 @@ func initConnection(ctx context.Context, mqttConnectionStatus chan mqttConnectio
 			KeepAlive:                     20,
 			CleanStartOnInitialConnection: false,
 			SessionExpiryInterval:         60,
+			ConnectRetryDelay:             time.Second * 5,
 			OnConnectionUp: func(connectionManager *autopaho.ConnectionManager, connectionAck *paho.Connack) {
-				mqttConnectionStatus <- mqttConnection{connected: true, err: nil, reason: "", code: 0}
+				mqttConnectionStatus <- mqttStatus{connected: true, err: nil, reason: "", code: 0}
 			},
 			OnConnectError: func(err error) {
-				mqttConnectionStatus <- mqttConnection{connected: false, err: err, reason: "", code: 254}
+				mqttConnectionStatus <- mqttStatus{connected: false, err: err, reason: "", code: 254}
 			},
 			ClientConfig: paho.ClientConfig{
 				ClientID: username,
@@ -431,10 +476,10 @@ func initConnection(ctx context.Context, mqttConnectionStatus chan mqttConnectio
 					},
 				},
 				OnClientError: func(err error) {
-					mqttConnectionStatus <- mqttConnection{connected: false, err: err, reason: "", code: 255}
+					mqttConnectionStatus <- mqttStatus{connected: false, err: err, reason: "", code: 255}
 				},
 				OnServerDisconnect: func(disconnect *paho.Disconnect) {
-					mqttConnectionStatus <- mqttConnection{
+					mqttConnectionStatus <- mqttStatus{
 						connected: false,
 						err:       err,
 						reason:    disconnect.Properties.ReasonString,
@@ -465,7 +510,7 @@ func waitForMessage(mqttMessages chan mqttMessage) tea.Cmd {
 	}
 }
 
-func waitForStatus(mqttConnectionStatus chan mqttConnection) tea.Cmd {
+func waitForStatus(mqttConnectionStatus chan mqttStatus) tea.Cmd {
 	return func() tea.Msg {
 		return <-mqttConnectionStatus
 	}
@@ -546,7 +591,6 @@ func runMimic(cmd *cobra.Command, args []string) {
 	if _, err := tea.NewProgram(
 		initMinicModel(cmd.Context()),
 		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
 	).Run(); err != nil {
 		logger.Error("Error running TUI: %v", err)
 	}

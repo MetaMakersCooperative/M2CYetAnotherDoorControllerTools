@@ -20,7 +20,7 @@ func (logger *Logger) Warn(format string, args ...any) {
 }
 
 func (logger *Logger) Error(format string, args ...any) {
-	logger.log.Output(2, fmt.Sprintf("error: "+format, args...))
+	logger.log.Output(2, fmt.Sprintf("ERROR: "+format, args...))
 }
 
 func NewLogger(w io.Writer, usePrefix bool, useTimeStamp bool) *Logger {
