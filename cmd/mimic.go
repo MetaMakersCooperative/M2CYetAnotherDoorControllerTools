@@ -224,17 +224,12 @@ func (model *mimicModel) UpdateDimensions(width int, height int) {
 	model.documentWindow.SetHeight(height)
 
 	innerWidth := model.documentWindow.GetInnerWidth()
-	if innerWidth%3 > 0 {
-		innerWidth -= innerWidth % 3
-	}
-	innerWidth /= 3
-
 	innerHeight := model.documentWindow.GetInnerHeight()
 
-	model.statusWindow.SetWidth(innerWidth)
+	model.statusWindow.SetWidth(35)
 	model.statusWindow.SetHeight(innerHeight)
 
-	model.logsWindow.SetWidth(innerWidth * 2)
+	model.logsWindow.SetWidth(innerWidth - 35)
 	model.logsWindow.SetHeight(innerHeight)
 
 	model.logsWindow.viewport.Height = model.logsWindow.GetInnerHeight()
@@ -331,6 +326,14 @@ func (model mimicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (model mimicModel) View() string {
+
+	if model.documentWindow.height < 20 || model.documentWindow.width < 80 {
+		return lipgloss.NewStyle().
+			Foreground(highlight).
+			Render(
+				"Terminal window needs to be larger than 80x20 to show information",
+			)
+	}
 
 	docStyle := lipgloss.NewStyle().
 		PaddingTop(model.documentWindow.padding.top).
