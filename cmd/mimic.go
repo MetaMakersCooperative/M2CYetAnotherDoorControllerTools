@@ -252,11 +252,6 @@ func (model mimicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var viewportCmd tea.Cmd
 	model.logsWindow.viewport, viewportCmd = model.logsWindow.viewport.Update(msg)
 	cmds = append(cmds, viewportCmd)
-	isAtBottom := model.logsWindow.viewport.AtBottom()
-	model.logsWindow.viewport.SetContent(model.logsWindow.Render())
-	if isAtBottom {
-		model.logsWindow.viewport.GotoBottom()
-	}
 
 	switch msg := msg.(type) {
 	case urlParseError:
@@ -322,6 +317,15 @@ func (model mimicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		model.statusWindow.spinner, spinnerCmd = model.statusWindow.spinner.Update(msg)
 		cmds = append(cmds, spinnerCmd)
 	}
+
+	// Needs to happen after tea.WindowSizeMsg is handled so that
+	// the log lines are rendered correctly
+	isAtBottom := model.logsWindow.viewport.AtBottom()
+	model.logsWindow.viewport.SetContent(model.logsWindow.Render())
+	if isAtBottom {
+		model.logsWindow.viewport.GotoBottom()
+	}
+
 	return model, tea.Batch(cmds...)
 }
 
