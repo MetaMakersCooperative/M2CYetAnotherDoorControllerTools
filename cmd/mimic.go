@@ -1,13 +1,11 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -15,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/muesli/reflow/wordwrap"
+	"github.com/muesli/reflow/wrap"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -94,51 +93,42 @@ type statusWindow struct {
 }
 
 type logsWindow struct {
-	logs      []string
-	err       error
-	logBuffer *bytes.Buffer
-	viewport  viewport.Model
+	logs     []string
+	err      error
+	viewport viewport.Model
 	window
 }
 
-func (logsWindow *logsWindow) Update() {
-	logMessage := bytes.NewBuffer([]byte(""))
-	totalSize := 0
-	for {
-		r, _, err := logsWindow.logBuffer.ReadRune()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			logsWindow.err = err
-			break
-		}
-		if r == '\r' || r == '\n' {
-			break
-		}
-		totalSize += 1
-		logMessage.WriteRune(r)
-	}
-	if totalSize == 0 {
-		return
-	}
-	if len(logsWindow.logs) == 200 {
-		logsWindow.logs = logsWindow.logs[1:]
-	}
+func (logsWindow *logsWindow) Log(prefix string, format string, args ...any) {
+	logsWindow.logs = append(
+		logsWindow.logs,
+		fmt.Sprintf(
+			"%s %s: "+format+"\n",
+			append([]any{time.Now().Format("15:04:05"), prefix}, args...)...,
+		),
+	)
+}
 
-	logsWindow.logs = append(logsWindow.logs, logMessage.String()+"\n")
+func (logsWindow *logsWindow) Info(format string, args ...any) {
+	logsWindow.Log("INFO", format, args...)
+}
+
+func (logsWindow *logsWindow) Warn(format string, args ...any) {
+	logsWindow.Log("WARN", format, args...)
+}
+
+func (logsWindow *logsWindow) Error(format string, args ...any) {
+	logsWindow.Log("ERROR", format, args...)
 }
 
 func (logsWindow *logsWindow) Render() string {
 	cursor := 0
 	text := ""
 	for cursor < len(logsWindow.logs) {
-		logWordWrapper := wordwrap.NewWriter(logsWindow.GetInnerWidth() - 1)
-		logWordWrapper.Breakpoints = []rune{' '}
-		logWordWrapper.Newline = []rune{'\n'}
-		logWordWrapper.Write([]byte(logsWindow.logs[cursor]))
-		logWordWrapper.Close()
-		text += logWordWrapper.String()
+		text += wrap.String(
+			wordwrap.String(logsWindow.logs[cursor], logsWindow.GetInnerWidth()),
+			logsWindow.GetInnerWidth(),
+		)
 		cursor += 1
 	}
 	return text
@@ -152,7 +142,6 @@ type mimicModel struct {
 	err                  error
 	serverConnection     *autopaho.ConnectionManager
 	ctx                  context.Context
-	logger               Logger
 	documentWindow       documentWindow
 	logsWindow           logsWindow
 	statusWindow         statusWindow
@@ -160,7 +149,7 @@ type mimicModel struct {
 	mqttConnectionStatus chan mqttStatus
 }
 
-func initMinicModel(ctx context.Context) *mimicModel {
+func initMinicModel(ctx context.Context) mimicModel {
 	physicalWidth, physicalHeight, err := term.GetSize(int(os.Stdout.Fd()))
 	if err != nil {
 		panic(err)
@@ -170,14 +159,11 @@ func initMinicModel(ctx context.Context) *mimicModel {
 	statusSpinnger.Spinner = spinner.Dot
 	statusSpinnger.Style = spinnerStyle
 
-	logBuf := bytes.NewBuffer([]byte(""))
-
 	model := mimicModel{
 		err:                  nil,
 		ctx:                  ctx,
-		logger:               *NewLogger(logBuf, false, false),
-		mqttConnectionStatus: make(chan mqttStatus, 5),
-		mqttMessages:         make(chan mqttMessage, 5),
+		mqttConnectionStatus: make(chan mqttStatus),
+		mqttMessages:         make(chan mqttMessage),
 		serverConnection:     nil,
 		documentWindow: documentWindow{
 			window: window{
@@ -189,9 +175,8 @@ func initMinicModel(ctx context.Context) *mimicModel {
 			},
 		},
 		logsWindow: logsWindow{
-			logs:      make([]string, 0),
-			logBuffer: logBuf,
-			viewport:  viewport.New(0, 0),
+			logs:     make([]string, 0),
+			viewport: viewport.New(0, 0),
 			window: window{
 				width:   0,
 				height:  0,
@@ -214,12 +199,10 @@ func initMinicModel(ctx context.Context) *mimicModel {
 		},
 	}
 
-	model.UpdateDimensions(physicalWidth, physicalHeight)
-
-	return &model
+	return model.UpdateDimensions(physicalWidth, physicalHeight)
 }
 
-func (model *mimicModel) UpdateDimensions(width int, height int) {
+func (model mimicModel) UpdateDimensions(width int, height int) mimicModel {
 	model.documentWindow.SetWidth(width)
 	model.documentWindow.SetHeight(height)
 
@@ -234,6 +217,8 @@ func (model *mimicModel) UpdateDimensions(width int, height int) {
 
 	model.logsWindow.viewport.Height = model.logsWindow.GetInnerHeight()
 	model.logsWindow.viewport.Width = model.logsWindow.GetInnerWidth()
+
+	return model
 }
 
 func (model mimicModel) Init() tea.Cmd {
@@ -245,8 +230,6 @@ func (model mimicModel) Init() tea.Cmd {
 }
 
 func (model mimicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	model.logsWindow.Update()
-
 	cmds := make([]tea.Cmd, 1)
 
 	var viewportCmd tea.Cmd
@@ -255,10 +238,10 @@ func (model mimicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case urlParseError:
-		model.logger.Error("Failed to parse url: %s - Error: ", msg.uri, msg.err)
+		model.logsWindow.Error("Failed to parse url: %s - Error: ", msg.uri, msg.err)
 	case mqttServerConnection:
 		if msg.err != nil {
-			model.logger.Error("Failed to create connection to MQTT Broker: %v", msg.err)
+			model.logsWindow.Error("Failed to create connection to MQTT Broker: %v", msg.err)
 			cmds = append(cmds, waitForStatus(model.mqttConnectionStatus))
 			break
 		}
@@ -268,7 +251,7 @@ func (model mimicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case mqttStatus:
 		model.statusWindow.isConnected = msg.connected
 		if msg.err == nil && msg.connected {
-			model.logger.Info("Connected to MQTT Broker")
+			model.logsWindow.Info("Connected to MQTT Broker")
 			cmds = append(
 				cmds,
 				subscribeToAccessList(model.serverConnection, model.ctx),
@@ -280,31 +263,31 @@ func (model mimicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		model.statusWindow.err = msg.err
 		if msg.code == 254 {
-			model.logger.Error("Failed to connect to MQTT Broker: %v", msg.err)
+			model.logsWindow.Error("Failed to connect to MQTT Broker: %v", msg.err)
 		} else if msg.code == 255 {
-			model.logger.Error("MQTT Client error: %v", msg.err)
+			model.logsWindow.Error("MQTT Client error: %v", msg.err)
 		} else {
-			model.logger.Error("MQTT disconnect with reason: %s - code: %d", msg.reason, msg.code)
+			model.logsWindow.Error("MQTT disconnect with reason: %s - code: %d", msg.reason, msg.code)
 		}
 		cmds = append(cmds, waitForStatus(model.mqttConnectionStatus))
 	case mqttMessage:
-		model.logger.Info("Received message from: %s", msg.topic)
-		model.logger.Info("Payload is: %s", msg.payload)
+		model.logsWindow.Info("Received message from: %s", msg.topic)
+		model.logsWindow.Info("Payload is: %s", msg.payload)
 		cmds = append(cmds, waitForMessage(model.mqttMessages))
 	case publishMessage:
 		if msg.err != nil {
-			model.logger.Error("Failed to publish to: %s - Error: %v", msg.topic, msg.err)
+			model.logsWindow.Error("Failed to publish to: %s - Error: %v", msg.topic, msg.err)
 		} else {
-			model.logger.Info("Published to topic: %s - Payload: %s", msg.topic, msg.payload)
+			model.logsWindow.Info("Published to topic: %s - Payload: %s", msg.topic, msg.payload)
 		}
 	case subscribeMessage:
 		if msg.err != nil {
-			model.logger.Error("Failed to subscribe to: %s - Error: %v", msg.topic, msg.err)
+			model.logsWindow.Error("Failed to subscribe to: %s - Error: %v", msg.topic, msg.err)
 		} else {
-			model.logger.Info("Subscribed to topic: %s", msg.topic)
+			model.logsWindow.Info("Subscribed to topic: %s", msg.topic)
 		}
 	case tea.WindowSizeMsg:
-		model.UpdateDimensions(msg.Width, msg.Height)
+		model = model.UpdateDimensions(msg.Width, msg.Height)
 	case tea.KeyMsg:
 		if msg.Type == tea.KeyCtrlC {
 			if model.serverConnection != nil {
