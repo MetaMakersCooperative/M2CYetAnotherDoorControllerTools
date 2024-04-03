@@ -1,7 +1,7 @@
 package main
 
-import "metamakers.org/door-controller-mqtt/commands"
+import "metamakers.org/door-controller-mqtt/cli_commands"
 
 func main() {
-	commands.Execute()
+	cli_commands.Execute()
 }

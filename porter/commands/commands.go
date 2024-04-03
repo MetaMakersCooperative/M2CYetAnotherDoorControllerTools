@@ -1,4 +1,4 @@
-package messages
+package commands
 
 import (
 	"context"
@@ -11,13 +11,14 @@ import (
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 
+	"metamakers.org/door-controller-mqtt/messages"
 	"metamakers.org/door-controller-mqtt/mqtt"
 )
 
 func InitConnection(
 	ctx context.Context,
-	mqttConnectionStatus chan MqttStatus,
-	mqttMessages chan MqttMessage,
+	mqttConnectionStatus chan messages.MqttStatus,
+	mqttMessages chan messages.MqttMessage,
 	mqttUri string,
 	username string,
 	password string,
@@ -25,7 +26,7 @@ func InitConnection(
 	return func() tea.Msg {
 		serverUrl, err := url.Parse(mqttUri)
 		if err != nil {
-			return UrlParseError{
+			return messages.UrlParseError{
 				URI: mqttUri,
 				Err: err,
 			}
@@ -40,17 +41,17 @@ func InitConnection(
 			SessionExpiryInterval:         60,
 			ConnectRetryDelay:             time.Second * 5,
 			OnConnectionUp: func(connectionManager *autopaho.ConnectionManager, connectionAck *paho.Connack) {
-				mqttConnectionStatus <- MqttStatus{Connected: true, Err: nil, Reason: "", Code: 0}
+				mqttConnectionStatus <- messages.MqttStatus{Connected: true, Err: nil, Reason: "", Code: 0}
 			},
 			OnConnectError: func(err error) {
-				mqttConnectionStatus <- MqttStatus{Connected: false, Err: err, Reason: "", Code: 254}
+				mqttConnectionStatus <- messages.MqttStatus{Connected: false, Err: err, Reason: "", Code: 254}
 			},
 			ClientConfig: paho.ClientConfig{
 				ClientID: username,
 				OnPublishReceived: []func(paho.PublishReceived) (bool, error){
 					func(publishReveived paho.PublishReceived) (bool, error) {
 						publish := publishReveived.Packet.Packet()
-						mqttMessages <- MqttMessage{
+						mqttMessages <- messages.MqttMessage{
 							Topic:   publish.Topic,
 							Payload: string(publish.Payload),
 						}
@@ -58,10 +59,10 @@ func InitConnection(
 					},
 				},
 				OnClientError: func(err error) {
-					mqttConnectionStatus <- MqttStatus{Connected: false, Err: err, Reason: "", Code: 255}
+					mqttConnectionStatus <- messages.MqttStatus{Connected: false, Err: err, Reason: "", Code: 255}
 				},
 				OnServerDisconnect: func(disconnect *paho.Disconnect) {
-					mqttConnectionStatus <- MqttStatus{
+					mqttConnectionStatus <- messages.MqttStatus{
 						Connected: false,
 						Err:       err,
 						Reason:    disconnect.Properties.ReasonString,
@@ -73,26 +74,26 @@ func InitConnection(
 
 		serverConnection, err := autopaho.NewConnection(ctx, clientConfig)
 		if err != nil {
-			return MqttServerConnection{
+			return messages.MqttServerConnection{
 				Connnection: serverConnection,
 				Err:         err,
 			}
 		}
 
-		return MqttServerConnection{
+		return messages.MqttServerConnection{
 			Connnection: serverConnection,
 			Err:         nil,
 		}
 	}
 }
 
-func WaitForMessage(mqttMessages chan MqttMessage) tea.Cmd {
+func WaitForMessage(mqttMessages chan messages.MqttMessage) tea.Cmd {
 	return func() tea.Msg {
 		return <-mqttMessages
 	}
 }
 
-func WaitForStatus(mqttConnectionStatus chan MqttStatus) tea.Cmd {
+func WaitForStatus(mqttConnectionStatus chan messages.MqttStatus) tea.Cmd {
 	return func() tea.Msg {
 		return <-mqttConnectionStatus
 	}
@@ -106,18 +107,26 @@ func PublishUnlock(serverConnection *autopaho.ConnectionManager, ctx context.Con
 			Topic:   mqtt.UnlockTopic,
 			Payload: []byte(payload),
 		}); err != nil {
-			return PublishMessage{mqtt.UnlockTopic, payload, err}
+			return messages.PublishMessage{
+				Topic:   mqtt.UnlockTopic,
+				Payload: payload,
+				Err:     err,
+			}
 		}
-		return PublishMessage{mqtt.UnlockTopic, payload, nil}
+		return messages.PublishMessage{
+			Topic:   mqtt.UnlockTopic,
+			Payload: payload,
+			Err:     nil,
+		}
 	}
 }
 
 func SubscribeToAccessList(serverConnection *autopaho.ConnectionManager, ctx context.Context) tea.Cmd {
 	return func() tea.Msg {
 		if serverConnection == nil {
-			return SubscribeMessage{
-				mqtt.AccessListTopic,
-				errors.New(
+			return messages.SubscribeMessage{
+				Topic: mqtt.AccessListTopic,
+				Err: errors.New(
 					fmt.Sprintf("Connection is nil! Cannot subscribe to: %s", mqtt.AccessListTopic),
 				),
 			}
@@ -127,19 +136,19 @@ func SubscribeToAccessList(serverConnection *autopaho.ConnectionManager, ctx con
 				{Topic: mqtt.AccessListTopic, QoS: 2},
 			},
 		}); err != nil {
-			return SubscribeMessage{mqtt.AccessListTopic, err}
+			return messages.SubscribeMessage{Topic: mqtt.AccessListTopic, Err: err}
 		}
 
-		return SubscribeMessage{mqtt.AccessListTopic, nil}
+		return messages.SubscribeMessage{Topic: mqtt.AccessListTopic, Err: nil}
 	}
 }
 
 func SubscribeToHealthCheck(serverConnection *autopaho.ConnectionManager, ctx context.Context) tea.Cmd {
 	return func() tea.Msg {
 		if serverConnection == nil {
-			return SubscribeMessage{
-				mqtt.AccessListTopic,
-				errors.New(
+			return messages.SubscribeMessage{
+				Topic: mqtt.AccessListTopic,
+				Err: errors.New(
 					fmt.Sprintf("Connection is nil! Cannot subscribe to: %s", mqtt.HealthCheckTopic),
 				),
 			}
@@ -149,10 +158,10 @@ func SubscribeToHealthCheck(serverConnection *autopaho.ConnectionManager, ctx co
 				{Topic: mqtt.HealthCheckTopic, QoS: 2},
 			},
 		}); err != nil {
-			return SubscribeMessage{mqtt.HealthCheckTopic, err}
+			return messages.SubscribeMessage{Topic: mqtt.HealthCheckTopic, Err: err}
 		}
 
-		return SubscribeMessage{mqtt.HealthCheckTopic, nil}
+		return messages.SubscribeMessage{Topic: mqtt.HealthCheckTopic, Err: nil}
 	}
 }
 
@@ -163,8 +172,8 @@ func HealthCheckHandler(serverConnection *autopaho.ConnectionManager, ctx contex
 			Topic:   mqtt.CheckInTopic,
 			Payload: []byte(username),
 		}); err != nil {
-			return PublishMessage{mqtt.CheckInTopic, username, err}
+			return messages.PublishMessage{Topic: mqtt.CheckInTopic, Payload: username, Err: err}
 		}
-		return PublishMessage{mqtt.CheckInTopic, username, nil}
+		return messages.PublishMessage{Topic: mqtt.CheckInTopic, Payload: username, Err: nil}
 	}
 }

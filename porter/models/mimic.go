@@ -12,6 +12,7 @@ import (
 	"github.com/eclipse/paho.golang/autopaho"
 	"golang.org/x/term"
 
+	"metamakers.org/door-controller-mqtt/commands"
 	"metamakers.org/door-controller-mqtt/messages"
 	"metamakers.org/door-controller-mqtt/models/windows"
 )
@@ -74,7 +75,7 @@ func (model MimicModel) UpdateDimensions(width int, height int) MimicModel {
 
 func (model MimicModel) Init() tea.Cmd {
 	return tea.Batch(
-		messages.InitConnection(
+		commands.InitConnection(
 			model.ctx,
 			model.mqttConnectionStatus,
 			model.mqttMessages,
@@ -82,7 +83,7 @@ func (model MimicModel) Init() tea.Cmd {
 			model.username,
 			model.password,
 		),
-		messages.WaitForStatus(model.mqttConnectionStatus),
+		commands.WaitForStatus(model.mqttConnectionStatus),
 		model.StatusWindow.Spinner.Tick,
 	)
 }
@@ -100,7 +101,7 @@ func (model MimicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case messages.MqttServerConnection:
 		if msg.Err != nil {
 			model.LogWindow.Error("Failed to create connection to MQTT Broker: %v", msg.Err)
-			cmds = append(cmds, messages.WaitForStatus(model.mqttConnectionStatus))
+			cmds = append(cmds, commands.WaitForStatus(model.mqttConnectionStatus))
 			break
 		}
 		model.StatusWindow.Initialized = true
@@ -112,10 +113,10 @@ func (model MimicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			model.LogWindow.Info("Connected to MQTT Broker")
 			cmds = append(
 				cmds,
-				messages.SubscribeToAccessList(model.serverConnection, model.ctx),
-				messages.SubscribeToHealthCheck(model.serverConnection, model.ctx),
-				messages.WaitForStatus(model.mqttConnectionStatus),
-				messages.WaitForMessage(model.mqttMessages),
+				commands.SubscribeToAccessList(model.serverConnection, model.ctx),
+				commands.SubscribeToHealthCheck(model.serverConnection, model.ctx),
+				commands.WaitForStatus(model.mqttConnectionStatus),
+				commands.WaitForMessage(model.mqttMessages),
 			)
 			break
 		}
@@ -127,11 +128,11 @@ func (model MimicModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			model.LogWindow.Error("MQTT disconnect with reason: %s - code: %d", msg.Reason, msg.Code)
 		}
-		cmds = append(cmds, messages.WaitForStatus(model.mqttConnectionStatus))
+		cmds = append(cmds, commands.WaitForStatus(model.mqttConnectionStatus))
 	case messages.MqttMessage:
 		model.LogWindow.Info("Received message from: %s", msg.Topic)
 		model.LogWindow.Info("Payload is: %s", msg.Payload)
-		cmds = append(cmds, messages.WaitForMessage(model.mqttMessages))
+		cmds = append(cmds, commands.WaitForMessage(model.mqttMessages))
 	case messages.PublishMessage:
 		if msg.Err != nil {
 			model.LogWindow.Error("Failed to publish to: %s - Error: %v", msg.Topic, msg.Err)
