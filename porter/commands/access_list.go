@@ -1,4 +1,4 @@
-package cmd
+package commands
 
 import (
 	"context"
@@ -16,6 +16,8 @@ import (
 	"github.com/eclipse/paho.golang/paho"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/spf13/cobra"
+
+	"metamakers.org/door-controller-mqtt/mqtt"
 )
 
 var accessListCmd = &cobra.Command{
@@ -112,7 +114,7 @@ func runAccessList(cmd *cobra.Command, args []string) {
 			case list := <-cardList:
 				if _, err = connectionManager.Publish(ctx, &paho.Publish{
 					QoS:     2,
-					Topic:   accessListTopic,
+					Topic:   mqtt.AccessListTopic,
 					Payload: []byte(list),
 				}); err != nil {
 					if ctx.Err() == nil {

@@ -1,4 +1,4 @@
-package cmd
+package commands
 
 import (
 	"os"
@@ -10,7 +10,7 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "door-controller-mqtt",
 	Short: "Porter MQTT CLI Tool",
-	Long: ``,
+	Long:  ``,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
