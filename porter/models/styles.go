@@ -8,6 +8,13 @@ var (
 
 	spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
+	checkboxStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FAFAFA"))
+
+	checkboxHighlightStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#F25D94")).
+				Bold(true)
+
 	leftPanelStyle = lipgloss.NewStyle().
 			Align(lipgloss.Left).
 			Foreground(lipgloss.Color("#FAFAFA")).

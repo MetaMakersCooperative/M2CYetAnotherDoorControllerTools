@@ -1,4 +1,4 @@
-package windows
+package models
 
 type Orientation struct {
 	Top    int

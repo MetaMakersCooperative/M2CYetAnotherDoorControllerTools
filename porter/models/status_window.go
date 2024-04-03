@@ -1,4 +1,4 @@
-package windows
+package models
 
 import (
 	"github.com/charmbracelet/bubbles/spinner"
@@ -10,6 +10,7 @@ type StatusWindow struct {
 	Spinner     spinner.Model
 	IsConnected bool
 	Initialized bool
+	Options     Options
 	Window
 }
 
@@ -22,6 +23,10 @@ func NewStatusWindow(style lipgloss.Style) StatusWindow {
 		Spinner:     statusSpinnger,
 		IsConnected: false,
 		Initialized: false,
+		Options: NewOptions(
+			KeyLabelPair{Key: "access_list", Label: "Error on access list"},
+			KeyLabelPair{Key: "health_check", Label: "Fail health check"},
+		),
 		Window: Window{
 			Width:   0,
 			Height:  0,

@@ -14,7 +14,6 @@ import (
 
 	"metamakers.org/door-controller-mqtt/commands"
 	"metamakers.org/door-controller-mqtt/messages"
-	"metamakers.org/door-controller-mqtt/models/windows"
 )
 
 type MimicModel struct {
@@ -26,9 +25,9 @@ type MimicModel struct {
 	ctx                  context.Context
 	mqttMessages         chan messages.MqttMessage
 	mqttConnectionStatus chan messages.MqttStatus
-	DocumentWindow       windows.DocumentWindow
-	LogWindow            windows.LogWindow
-	StatusWindow         windows.StatusWindow
+	DocumentWindow       DocumentWindow
+	LogWindow            LogWindow
+	StatusWindow         StatusWindow
 }
 
 func InitMinicModel(ctx context.Context, mqttUri string, username string, password string) MimicModel {
@@ -46,9 +45,9 @@ func InitMinicModel(ctx context.Context, mqttUri string, username string, passwo
 		mqttConnectionStatus: make(chan messages.MqttStatus),
 		mqttMessages:         make(chan messages.MqttMessage),
 		serverConnection:     nil,
-		DocumentWindow:       windows.NewDocumentWindow(),
-		LogWindow:            windows.NewLogWindow(),
-		StatusWindow:         windows.NewStatusWindow(spinnerStyle),
+		DocumentWindow:       NewDocumentWindow(),
+		LogWindow:            NewLogWindow(),
+		StatusWindow:         NewStatusWindow(spinnerStyle),
 	}
 
 	return model.UpdateDimensions(physicalWidth, physicalHeight)
@@ -220,6 +219,9 @@ func (model MimicModel) View() string {
 			header.Render("Connection Status"),
 			"\n",
 			text.Render(status),
+			header.Copy().MarginTop(2).Render("Options"),
+			"\n",
+			model.StatusWindow.Options.Render(),
 		)
 
 	right := rightPanelStyle.
