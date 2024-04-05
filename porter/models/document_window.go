@@ -36,10 +36,10 @@ func (documentWindow DocumentWindow) Update(msg tea.Msg) (DocumentWindow, tea.Cm
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if msg.Type == tea.KeyRight {
+		if msg.Type == tea.KeyCtrlRight {
 			documentWindow.logWindow.Focus()
 			documentWindow.statusWindow.Blur()
-		} else if msg.Type == tea.KeyLeft {
+		} else if msg.Type == tea.KeyCtrlLeft {
 			documentWindow.logWindow.Blur()
 			documentWindow.statusWindow.Focus()
 		}

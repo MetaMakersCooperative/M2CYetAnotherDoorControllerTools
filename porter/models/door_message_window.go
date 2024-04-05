@@ -1,30 +1,22 @@
 package models
 
 import (
-	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 type DoorMessageWindow struct {
-	DoorOptions   Options
-	DoorTextInput textinput.Model
+	DoorOptions Options
 	Window
 }
 
 func NewDoorMessageWindow(focused bool, width int) DoorMessageWindow {
-	doorTextInput := textinput.New()
-	doorTextInput.Placeholder = "0001234567"
-	doorTextInput.CharLimit = 10
-	doorTextInput.Width = 10
-
 	doorOptions := NewOptions(
 		true,
 		KeyLabelPair{Key: "unlock", Label: "Send unlock denied"},
 		KeyLabelPair{Key: "denied", Label: "Send unlock success"},
 	)
 	responseOptionsWindow := DoorMessageWindow{
-		DoorOptions:   doorOptions,
-		DoorTextInput: doorTextInput,
+		DoorOptions: doorOptions,
 		Window: Window{
 			focused: focused,
 			Width:   width,
@@ -51,11 +43,13 @@ func (doorMessageWindow DoorMessageWindow) Blur() DoorMessageWindow {
 	return doorMessageWindow
 }
 
-func (doorMessageWindow DoorMessageWindow) Update(msg tea.Msg) DoorMessageWindow {
+func (doorMessageWindow DoorMessageWindow) Update(msg tea.Msg) (DoorMessageWindow, tea.Cmd) {
 	doorMessageWindow.DoorOptions = doorMessageWindow.DoorOptions.Update(msg)
-	return doorMessageWindow
+	return doorMessageWindow, nil
 }
 
 func (doorMessageWindow DoorMessageWindow) Render() string {
-	return doorMessageWindow.Window.Render(doorMessageWindow.DoorOptions.Render())
+	return doorMessageWindow.Window.Render(
+		doorMessageWindow.DoorOptions.Render(),
+	)
 }
