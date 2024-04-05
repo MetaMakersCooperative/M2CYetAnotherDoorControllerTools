@@ -15,6 +15,16 @@ import (
 	"metamakers.org/door-controller-mqtt/mqtt"
 )
 
+func Init(mqttUri string, username string, password string) tea.Cmd {
+	return func() tea.Msg {
+		return messages.MqttCredentials{
+			URI:      mqttUri,
+			Username: username,
+			Password: password,
+		}
+	}
+}
+
 func InitConnection(
 	ctx context.Context,
 	mqttConnectionStatus chan messages.MqttStatus,

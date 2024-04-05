@@ -24,7 +24,11 @@ type MqttServerConnection struct {
 	Err         error
 }
 
-type Initialized byte
+type MqttCredentials struct {
+	URI      string
+	Username string
+	Password string
+}
 
 type PublishMessage struct {
 	Payload string

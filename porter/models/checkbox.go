@@ -8,13 +8,14 @@ import (
 
 type Checkbox struct {
 	checked bool
-	active  bool
+	focused bool
 	Label   string
+	IsRadio bool
 }
 
 func (checkBox Checkbox) Render() string {
 	var style lipgloss.Style
-	if checkBox.active {
+	if checkBox.focused {
 		style = checkboxHighlightStyle
 	} else {
 		style = checkboxStyle
@@ -22,12 +23,20 @@ func (checkBox Checkbox) Render() string {
 
 	var check string
 	if checkBox.checked {
-		check = "x"
+		if checkBox.IsRadio {
+			check = "*"
+		} else {
+			check = "x"
+		}
 	} else {
 		check = " "
 	}
 
-	return style.Render(fmt.Sprintf("[%s] %s", check, checkBox.Label))
+	if checkBox.IsRadio {
+		return style.Render(fmt.Sprintf("(%s) %s", check, checkBox.Label))
+	} else {
+		return style.Render(fmt.Sprintf("[%s] %s", check, checkBox.Label))
+	}
 }
 
 func (checkbox Checkbox) IsChecked() bool {
@@ -39,7 +48,17 @@ func (checkbox Checkbox) Toggle() Checkbox {
 	return checkbox
 }
 
-func (checkbox Checkbox) ToggleActive() Checkbox {
-	checkbox.active = !checkbox.active
+func (checkbox Checkbox) ToggleFocus() Checkbox {
+	checkbox.focused = !checkbox.focused
+	return checkbox
+}
+
+func (checkbox Checkbox) Focus() Checkbox {
+	checkbox.focused = true
+	return checkbox
+}
+
+func (checkbox Checkbox) Blur() Checkbox {
+	checkbox.focused = false
 	return checkbox
 }

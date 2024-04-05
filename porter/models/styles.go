@@ -8,6 +8,10 @@ var (
 
 	spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
+	optionsStyle = lipgloss.NewStyle().
+			Align(lipgloss.Left).
+			Foreground(lipgloss.Color("#FAFAFA"))
+
 	checkboxStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#FAFAFA"))
 
@@ -15,25 +19,15 @@ var (
 				Foreground(lipgloss.Color("#F25D94")).
 				Bold(true)
 
-	leftPanelStyle = lipgloss.NewStyle().
+	windowStyle = lipgloss.NewStyle().
 			Align(lipgloss.Left).
 			Foreground(lipgloss.Color("#FAFAFA")).
-			Border(lipgloss.RoundedBorder()).
-			BorderTop(true).
-			BorderRight(true).
-			BorderBottom(true).
-			BorderLeft(true).
 			BorderForeground(highlight)
 
-	rightPanelStyle = lipgloss.NewStyle().
+	statusText = lipgloss.NewStyle().
 			Align(lipgloss.Left).
-			Foreground(lipgloss.Color("#FAFAFA")).
-			Border(lipgloss.RoundedBorder()).
-			BorderTop(true).
-			BorderRight(true).
-			BorderBottom(true).
-			BorderLeft(true).
-			BorderForeground(highlight)
+			MarginTop(1).
+			Foreground(lipgloss.Color("#FAFAFA"))
 
 	text = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#FAFAFA"))
