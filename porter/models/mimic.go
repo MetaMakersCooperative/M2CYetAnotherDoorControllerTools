@@ -8,6 +8,7 @@ import (
 	"golang.org/x/term"
 
 	"metamakers.org/door-controller-mqtt/commands"
+	"metamakers.org/door-controller-mqtt/messages"
 )
 
 type MimicModel struct {
@@ -37,10 +38,13 @@ func (model MimicModel) UpdateDimensions(width int, height int) MimicModel {
 }
 
 func (model MimicModel) Init() tea.Cmd {
-	return commands.Init(
-		model.mqttUri,
-		model.username,
-		model.password,
+	return tea.Batch(
+		func() tea.Msg { return messages.Init(nil) },
+		commands.Init(
+			model.mqttUri,
+			model.username,
+			model.password,
+		),
 	)
 }
 

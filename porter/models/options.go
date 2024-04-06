@@ -3,6 +3,7 @@ package models
 import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"metamakers.org/door-controller-mqtt/messages"
 )
 
 type KeyLabelPair struct {
@@ -11,12 +12,13 @@ type KeyLabelPair struct {
 }
 
 type Options struct {
-	focused     bool
-	options     map[string]Checkbox
-	order       []string
-	active      int
-	lastToggled int
-	isRadio     bool
+	focused       bool
+	options       map[string]Checkbox
+	order         []string
+	active        int
+	lastToggled   int
+	isRadio       bool
+	changeMessage func(state map[string]bool) tea.Msg
 	keyBindings
 }
 
@@ -26,7 +28,7 @@ type keyBindings struct {
 	check key.Binding
 }
 
-func NewOptions(isRadio bool, pairs ...KeyLabelPair) Options {
+func NewOptions(isRadio bool, changeMessage func(state map[string]bool) tea.Msg, pairs ...KeyLabelPair) Options {
 	options := make(map[string]Checkbox, 0)
 	order := make([]string, 0)
 	for index, pair := range pairs {
@@ -38,12 +40,13 @@ func NewOptions(isRadio bool, pairs ...KeyLabelPair) Options {
 	}
 
 	return Options{
-		options:     options,
-		order:       order,
-		active:      0,
-		lastToggled: 0,
-		focused:     false,
-		isRadio:     isRadio,
+		options:       options,
+		order:         order,
+		active:        0,
+		lastToggled:   0,
+		focused:       false,
+		isRadio:       isRadio,
+		changeMessage: changeMessage,
 		keyBindings: keyBindings{
 			up:    key.NewBinding(key.WithKeys("k", "up")),
 			down:  key.NewBinding(key.WithKeys("j", "down")),
@@ -90,12 +93,22 @@ func (options Options) ToggleFocus() Options {
 	return options
 }
 
-func (options Options) Update(msg tea.Msg) Options {
+func (options Options) changeStateMessage() tea.Msg {
+	state := make(map[string]bool, 0)
+	for key, item := range options.options {
+		state[key] = item.checked
+	}
+	return options.changeMessage(state)
+}
+
+func (options Options) Update(msg tea.Msg) (Options, tea.Cmd) {
 	if !options.focused || len(options.options) == 0 {
 		options.options[options.order[options.active]] = options.options[options.order[options.active]].Blur()
-		return options
+		return options, nil
 	}
 	switch msg := msg.(type) {
+	case messages.Init:
+		return options, options.changeStateMessage
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, options.keyBindings.up):
@@ -119,7 +132,8 @@ func (options Options) Update(msg tea.Msg) Options {
 				options.lastToggled = options.active
 			}
 			options.options[options.order[options.active]] = options.options[options.order[options.active]].Toggle()
+			return options, options.changeStateMessage
 		}
 	}
-	return options
+	return options, nil
 }

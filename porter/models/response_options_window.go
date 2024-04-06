@@ -1,6 +1,9 @@
 package models
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	tea "github.com/charmbracelet/bubbletea"
+	"metamakers.org/door-controller-mqtt/messages"
+)
 
 type ResponseOptionsWindow struct {
 	ResponseOptions Options
@@ -10,6 +13,9 @@ type ResponseOptionsWindow struct {
 func NewResponseOptionsWindow(focused bool, width int) ResponseOptionsWindow {
 	responseOptions := NewOptions(
 		false,
+		func(state map[string]bool) tea.Msg {
+			return messages.ResponseOptionsSelectionMessage(state)
+		},
 		KeyLabelPair{Key: "access_list", Label: "Error on access list"},
 		KeyLabelPair{Key: "health_check", Label: "Fail health check"},
 	)
@@ -41,9 +47,10 @@ func (responseOptionsWindow ResponseOptionsWindow) Blur() ResponseOptionsWindow 
 	return responseOptionsWindow
 }
 
-func (responseOptionsWindow ResponseOptionsWindow) Update(msg tea.Msg) ResponseOptionsWindow {
-	responseOptionsWindow.ResponseOptions = responseOptionsWindow.ResponseOptions.Update(msg)
-	return responseOptionsWindow
+func (responseOptionsWindow ResponseOptionsWindow) Update(msg tea.Msg) (ResponseOptionsWindow, tea.Cmd) {
+	var responseOptionsWindowCmd tea.Cmd
+	responseOptionsWindow.ResponseOptions, responseOptionsWindowCmd = responseOptionsWindow.ResponseOptions.Update(msg)
+	return responseOptionsWindow, responseOptionsWindowCmd
 }
 
 func (responseOptionsWindow ResponseOptionsWindow) Render() string {

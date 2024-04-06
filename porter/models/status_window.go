@@ -23,7 +23,7 @@ type StatusWindow struct {
 	IsConnected           bool
 	Initialized           bool
 	ResponseOptionsWindow ResponseOptionsWindow
-	DoorMessageWindow     DoorMessageWindow
+	DoorTopicWindow       DoorTopicWindow
 	TextInputWindow       TextInputWindow
 	Window
 }
@@ -45,7 +45,7 @@ func NewStatusWindow(ctx context.Context, focused bool) StatusWindow {
 		IsConnected:           false,
 		Initialized:           false,
 		ResponseOptionsWindow: NewResponseOptionsWindow(false, 0),
-		DoorMessageWindow:     NewDoorMessageWindow(false, 0),
+		DoorTopicWindow:       NewDoorTopicWindow(false, 0),
 		TextInputWindow:       NewTextInputWindow(false, 0),
 		Window: Window{
 			focused: focused,
@@ -126,29 +126,30 @@ func (statusWindow StatusWindow) Update(msg tea.Msg) (StatusWindow, tea.Cmd) {
 		switch statusWindow.tabIndex {
 		case 0:
 			statusWindow.ResponseOptionsWindow = statusWindow.ResponseOptionsWindow.Focus()
-			statusWindow.DoorMessageWindow = statusWindow.DoorMessageWindow.Blur()
+			statusWindow.DoorTopicWindow = statusWindow.DoorTopicWindow.Blur()
 			statusWindow.TextInputWindow = statusWindow.TextInputWindow.Blur()
 		case 1:
-			statusWindow.DoorMessageWindow = statusWindow.DoorMessageWindow.Focus()
+			statusWindow.DoorTopicWindow = statusWindow.DoorTopicWindow.Focus()
 			statusWindow.ResponseOptionsWindow = statusWindow.ResponseOptionsWindow.Blur()
 			statusWindow.TextInputWindow = statusWindow.TextInputWindow.Blur()
 		case 2:
 			statusWindow.TextInputWindow = statusWindow.TextInputWindow.Focus()
-			statusWindow.DoorMessageWindow = statusWindow.DoorMessageWindow.Blur()
+			statusWindow.DoorTopicWindow = statusWindow.DoorTopicWindow.Blur()
 			statusWindow.ResponseOptionsWindow = statusWindow.ResponseOptionsWindow.Blur()
 		}
 	} else {
-		statusWindow.DoorMessageWindow = statusWindow.DoorMessageWindow.Blur()
+		statusWindow.DoorTopicWindow = statusWindow.DoorTopicWindow.Blur()
 		statusWindow.ResponseOptionsWindow = statusWindow.ResponseOptionsWindow.Blur()
 		statusWindow.TextInputWindow = statusWindow.TextInputWindow.Blur()
 	}
 
-	statusWindow.ResponseOptionsWindow = statusWindow.ResponseOptionsWindow.Update(msg)
-	var doorMessageCmd tea.Cmd
-	statusWindow.DoorMessageWindow, doorMessageCmd = statusWindow.DoorMessageWindow.Update(msg)
+	var responseOptionsWindowCmd tea.Cmd
+	statusWindow.ResponseOptionsWindow, responseOptionsWindowCmd = statusWindow.ResponseOptionsWindow.Update(msg)
+	var doorTopicCmd tea.Cmd
+	statusWindow.DoorTopicWindow, doorTopicCmd = statusWindow.DoorTopicWindow.Update(msg)
 	var textInputCmd tea.Cmd
 	statusWindow.TextInputWindow, textInputCmd = statusWindow.TextInputWindow.Update(msg)
-	cmds = append(cmds, doorMessageCmd, textInputCmd)
+	cmds = append(cmds, doorTopicCmd, textInputCmd, responseOptionsWindowCmd)
 
 	return statusWindow, tea.Batch(cmds...)
 }
@@ -165,7 +166,7 @@ func (statusWindow StatusWindow) UpdateDimensions(width int, height int) StatusW
 	statusWindow.SetWidth(width)
 	statusWindow.SetHeight(height)
 	statusWindow.ResponseOptionsWindow.SetWidth(statusWindow.GetInnerWidth())
-	statusWindow.DoorMessageWindow.SetWidth(statusWindow.GetInnerWidth())
+	statusWindow.DoorTopicWindow.SetWidth(statusWindow.GetInnerWidth())
 	statusWindow.TextInputWindow.SetWidth(statusWindow.GetInnerWidth())
 	return statusWindow
 }
@@ -190,7 +191,7 @@ func (statusWindow *StatusWindow) Render() string {
 		header.Copy().MarginTop(2).Render("Options"),
 		statusWindow.ResponseOptionsWindow.Render(),
 		header.Copy().MarginTop(2).Render("Send Door Message"),
-		statusWindow.DoorMessageWindow.Render(),
+		statusWindow.DoorTopicWindow.Render(),
 		statusWindow.TextInputWindow.Render(),
 	)
 }

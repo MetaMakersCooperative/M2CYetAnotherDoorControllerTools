@@ -2,6 +2,8 @@ package messages
 
 import "github.com/eclipse/paho.golang/autopaho"
 
+type Init interface{}
+
 type MqttMessage struct {
 	Topic   string
 	Payload string
@@ -40,3 +42,6 @@ type SubscribeMessage struct {
 	Topic string
 	Err   error
 }
+
+type DoorTopicSelectionMessage map[string]bool
+type ResponseOptionsSelectionMessage map[string]bool
