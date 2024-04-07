@@ -1,7 +1,10 @@
 package cli_commands
 
 import (
+	"fmt"
+
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"metamakers.org/door-controller-mqtt/models"
 )
@@ -13,13 +16,8 @@ var mimicCmd = &cobra.Command{
 	Run:   runMimic,
 }
 
-var mqttUri string
-
 func init() {
 	porterCmd.AddCommand(mimicCmd)
-
-	mimicCmd.Flags().StringVarP(&mqttUri, "mqtt_uri", "m", "", "Uri used to connect to the mqtt broker")
-	mimicCmd.MarkFlagRequired("mqtt_uri")
 }
 
 func runMimic(cmd *cobra.Command, args []string) {
@@ -27,6 +25,9 @@ func runMimic(cmd *cobra.Command, args []string) {
 		models.InitMinicModel(cmd.Context(), mqttUri, username, password),
 		tea.WithAltScreen(),
 	).Run(); err != nil {
-		logger.Error("Error running TUI: %v", err)
+		log.Error().
+			Str("error", err.Error()).
+			Str("event", "TUI").
+			Msg(fmt.Sprintf("Error running TUI: %v", err))
 	}
 }
