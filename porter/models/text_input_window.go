@@ -9,11 +9,12 @@ import (
 )
 
 type TextInputWindow struct {
-	TextInput textinput.Model
+	TextInput     textinput.Model
+	submitMessage func(value string) tea.Msg
 	Window
 }
 
-func NewTextInputWindow(focused bool, width int) TextInputWindow {
+func NewTextInputWindow(focused bool, submitMessage func(value string) tea.Msg, width int) TextInputWindow {
 	textInput := textinput.New()
 	textInput.Placeholder = "0001234567"
 	textInput.CharLimit = 10
@@ -27,7 +28,8 @@ func NewTextInputWindow(focused bool, width int) TextInputWindow {
 	}
 
 	textInputWindow := TextInputWindow{
-		TextInput: textInput,
+		TextInput:     textInput,
+		submitMessage: submitMessage,
 		Window: Window{
 			focused: focused,
 			Width:   width,
@@ -54,10 +56,26 @@ func (textInputWindow TextInputWindow) Blur() TextInputWindow {
 	return textInputWindow
 }
 
+func submitTextCommand(textInputWindow TextInputWindow) tea.Cmd {
+	return func() tea.Msg {
+		return textInputWindow.submitMessage(textInputWindow.TextInput.Value())
+	}
+}
+
 func (textInputWindow TextInputWindow) Update(msg tea.Msg) (TextInputWindow, tea.Cmd) {
+	cmds := make([]tea.Cmd, 0)
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch {
+		case msg.Type == tea.KeyEnter:
+			cmds = append(cmds, submitTextCommand(textInputWindow))
+			textInputWindow.TextInput.Reset()
+		}
+	}
 	var doorTextCmd tea.Cmd
 	textInputWindow.TextInput, doorTextCmd = textInputWindow.TextInput.Update(msg)
-	return textInputWindow, doorTextCmd
+	cmds = append(cmds, doorTextCmd)
+	return textInputWindow, tea.Batch(cmds...)
 }
 
 func (textInputWindow TextInputWindow) Render() string {

@@ -45,3 +45,4 @@ type SubscribeMessage struct {
 
 type DoorTopicSelectionMessage map[string]bool
 type ResponseOptionsSelectionMessage map[string]bool
+type DoorCodeTextMessage string

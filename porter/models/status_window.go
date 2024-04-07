@@ -46,7 +46,13 @@ func NewStatusWindow(ctx context.Context, focused bool) StatusWindow {
 		Initialized:           false,
 		ResponseOptionsWindow: NewResponseOptionsWindow(false, 0),
 		DoorTopicWindow:       NewDoorTopicWindow(false, 0),
-		TextInputWindow:       NewTextInputWindow(false, 0),
+		TextInputWindow: NewTextInputWindow(
+			false,
+			func(value string) tea.Msg {
+				return messages.DoorCodeTextMessage(value)
+			},
+			0,
+		),
 		Window: Window{
 			focused: focused,
 			Width:   0,

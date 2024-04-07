@@ -93,36 +93,37 @@ func (options Options) ToggleFocus() Options {
 	return options
 }
 
-func (options Options) changeStateMessage() tea.Msg {
-	state := make(map[string]bool, 0)
-	for key, item := range options.options {
-		state[key] = item.checked
+func changeStateMessage(options Options) tea.Cmd {
+	return func() tea.Msg {
+		state := make(map[string]bool, 0)
+		for key, item := range options.options {
+			state[key] = item.checked
+		}
+		return options.changeMessage(state)
 	}
-	return options.changeMessage(state)
 }
 
 func (options Options) Update(msg tea.Msg) (Options, tea.Cmd) {
+	var cmd tea.Cmd
 	if !options.focused || len(options.options) == 0 {
 		options.options[options.order[options.active]] = options.options[options.order[options.active]].Blur()
-		return options, nil
+		return options, cmd
 	}
 	switch msg := msg.(type) {
 	case messages.Init:
-		return options, options.changeStateMessage
+		cmd = changeStateMessage(options)
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, options.keyBindings.up):
 			if options.active-1 < 0 {
 				break
 			}
-			options = options.toggleFocusAt(options.active).
-				toggleFocusAt(options.active - 1)
+			options = options.toggleFocusAt(options.active).toggleFocusAt(options.active - 1)
 		case key.Matches(msg, options.keyBindings.down):
 			if options.active+1 >= len(options.options) {
 				break
 			}
-			options = options.toggleFocusAt(options.active).
-				toggleFocusAt(options.active + 1)
+			options = options.toggleFocusAt(options.active).toggleFocusAt(options.active + 1)
 		case key.Matches(msg, options.keyBindings.check):
 			if options.isRadio {
 				if options.lastToggled == options.active {
@@ -132,8 +133,8 @@ func (options Options) Update(msg tea.Msg) (Options, tea.Cmd) {
 				options.lastToggled = options.active
 			}
 			options.options[options.order[options.active]] = options.options[options.order[options.active]].Toggle()
-			return options, options.changeStateMessage
+			cmd = changeStateMessage(options)
 		}
 	}
-	return options, nil
+	return options, cmd
 }
