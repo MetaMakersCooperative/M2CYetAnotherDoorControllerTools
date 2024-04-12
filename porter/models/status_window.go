@@ -9,6 +9,7 @@ import (
 	"github.com/eclipse/paho.golang/autopaho"
 	"metamakers.org/door-controller-mqtt/commands"
 	"metamakers.org/door-controller-mqtt/messages"
+	"metamakers.org/door-controller-mqtt/mqtt"
 )
 
 type StatusWindow struct {
@@ -16,8 +17,11 @@ type StatusWindow struct {
 	ctx                   context.Context
 	mqttMessages          chan messages.MqttMessage
 	mqttConnectionStatus  chan messages.MqttStatus
+	clientID              string
 	tabIndex              int
 	maxTabIndex           int
+	accessListState       bool
+	failHealthCheckState  bool
 	Err                   error
 	Spinner               spinner.Model
 	IsConnected           bool
@@ -28,24 +32,37 @@ type StatusWindow struct {
 	Window
 }
 
+const (
+	AccessListKey      = "access_list"
+	FailHealthCheckKey = "fail_health_check"
+)
+
 func NewStatusWindow(ctx context.Context, focused bool) StatusWindow {
 	statusSpinnger := spinner.New()
 	statusSpinnger.Spinner = spinner.Dot
 	statusSpinnger.Style = spinnerStyle
 
 	return StatusWindow{
-		ctx:                   ctx,
-		mqttConnectionStatus:  make(chan messages.MqttStatus),
-		mqttMessages:          make(chan messages.MqttMessage),
-		serverConnection:      nil,
-		tabIndex:              0,
-		maxTabIndex:           2,
-		Err:                   nil,
-		Spinner:               statusSpinnger,
-		IsConnected:           false,
-		Initialized:           false,
-		ResponseOptionsWindow: NewResponseOptionsWindow(false, 0),
-		DoorTopicWindow:       NewDoorTopicWindow(false, 0),
+		ctx:                  ctx,
+		mqttConnectionStatus: make(chan messages.MqttStatus),
+		mqttMessages:         make(chan messages.MqttMessage),
+		clientID:             "",
+		serverConnection:     nil,
+		tabIndex:             0,
+		maxTabIndex:          2,
+		accessListState:      false,
+		failHealthCheckState: false,
+		Err:                  nil,
+		Spinner:              statusSpinnger,
+		IsConnected:          false,
+		Initialized:          false,
+		ResponseOptionsWindow: NewResponseOptionsWindow(
+			false,
+			0,
+			KeyLabelPair{Key: AccessListKey, Label: "Error on access list"},
+			KeyLabelPair{Key: FailHealthCheckKey, Label: "Fail health check"},
+		),
+		DoorTopicWindow: NewDoorTopicWindow(false, 0),
 		TextInputWindow: NewTextInputWindow(
 			false,
 			func(value string) tea.Msg {
@@ -94,8 +111,17 @@ func (statusWindow StatusWindow) Update(msg tea.Msg) (StatusWindow, tea.Cmd) {
 		}
 		cmds = append(cmds, commands.WaitForStatus(statusWindow.mqttConnectionStatus))
 	case messages.MqttMessage:
+		switch msg.Topic {
+		case mqtt.HealthCheckTopic:
+			if !statusWindow.failHealthCheckState {
+				cmds = append(cmds, commands.HealthCheckHandler(statusWindow.serverConnection, statusWindow.ctx, statusWindow.clientID))
+			} else {
+				cmds = append(cmds, commands.FailHealthCheckHandler(statusWindow.clientID))
+			}
+		}
 		cmds = append(cmds, commands.WaitForMessage(statusWindow.mqttMessages))
 	case messages.MqttCredentials:
+		statusWindow.clientID = msg.Username
 		cmds = append(cmds,
 			commands.InitConnection(
 				statusWindow.ctx,
@@ -108,6 +134,14 @@ func (statusWindow StatusWindow) Update(msg tea.Msg) (StatusWindow, tea.Cmd) {
 			commands.WaitForStatus(statusWindow.mqttConnectionStatus),
 			statusWindow.Spinner.Tick,
 		)
+	case messages.ResponseOptionsSelectionMessage:
+		var exists bool
+		if statusWindow.accessListState, exists = msg[AccessListKey]; !exists {
+			statusWindow.accessListState = false
+		}
+		if statusWindow.failHealthCheckState, exists = msg[FailHealthCheckKey]; !exists {
+			statusWindow.failHealthCheckState = false
+		}
 	case tea.KeyMsg:
 		if msg.Type == tea.KeyCtrlC {
 			if statusWindow.serverConnection != nil {

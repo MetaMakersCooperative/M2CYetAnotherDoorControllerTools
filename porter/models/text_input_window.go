@@ -63,6 +63,9 @@ func submitTextCommand(textInputWindow TextInputWindow) tea.Cmd {
 }
 
 func (textInputWindow TextInputWindow) Update(msg tea.Msg) (TextInputWindow, tea.Cmd) {
+	if !textInputWindow.Window.IsFocused() {
+		return textInputWindow, nil
+	}
 	cmds := make([]tea.Cmd, 0)
 	switch msg := msg.(type) {
 	case tea.KeyMsg:

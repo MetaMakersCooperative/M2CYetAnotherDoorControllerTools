@@ -23,7 +23,6 @@ func init() {
 func runMimic(cmd *cobra.Command, args []string) {
 	if _, err := tea.NewProgram(
 		models.InitMinicModel(cmd.Context(), mqttUri, username, password),
-		tea.WithAltScreen(),
 	).Run(); err != nil {
 		log.Error().
 			Str("error", err.Error()).

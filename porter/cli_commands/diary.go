@@ -7,13 +7,17 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"metamakers.org/door-controller-mqtt/mqtt"
 )
 
 var diaryCmd = &cobra.Command{
@@ -93,6 +97,48 @@ func runDiaryCmd(cmd *cobra.Command, _ []string) {
 		return
 	}
 
+	lastSeen := make(map[string]time.Time, 0)
+
+	router := paho.NewStandardRouter()
+	router.RegisterHandler(mqtt.RootLevel+"/#", func(publish *paho.Publish) {
+		topicChunks := strings.Split(publish.Topic, "/")
+		if len(topicChunks) < 3 {
+			log.Error().
+				Str("event", "TopicParser").
+				Uint16("packet_id", publish.PacketID).
+				Bool("duplicate", publish.Duplicate()).
+				Bool("retain", publish.Retain).
+				Str("qos", string(publish.QoS)).
+				Str("topic", publish.Topic).
+				Str("content_type", publish.Properties.ContentType).
+				Str("payload", string(publish.Payload)).
+				Msg("Unable to parse topic! Received less than 3 chunks")
+			return
+		}
+		clientID := topicChunks[len(topicChunks)-1]
+		lastSeen[clientID] = time.Now()
+		var logLevel *zerolog.Event
+		switch topicChunks[1] {
+		case mqtt.LogFatalLevel:
+			logLevel = log.Error()
+		case mqtt.LogWarnLevel, mqtt.DeniedAccessLevel:
+			logLevel = log.Warn()
+		default:
+			logLevel = log.Info()
+		}
+		logLevel.
+			Str("event", "PublishHandler").
+			Uint16("packet_id", publish.PacketID).
+			Bool("duplicate", publish.Duplicate()).
+			Bool("retain", publish.Retain).
+			Str("qos", string(publish.QoS)).
+			Str("clientID", clientID).
+			Str("topic", publish.Topic).
+			Str("content_type", publish.Properties.ContentType).
+			Str("payload", string(publish.Payload)).
+			Msg("Publish payload was handled")
+	})
+
 	clientConfig := autopaho.ClientConfig{
 		ServerUrls:                    []*url.URL{serverUrl},
 		ConnectUsername:               username,
@@ -105,6 +151,23 @@ func runDiaryCmd(cmd *cobra.Command, _ []string) {
 				Str("event", "OnConnectionUp").
 				Str("response", connectionAck.Properties.ResponseInfo).
 				Msg("Connected to MQTT broker")
+
+			if _, err := connectionManager.Subscribe(ctx, &paho.Subscribe{
+				Subscriptions: []paho.SubscribeOptions{
+					{Topic: mqtt.LogInfoTopic + "/#", QoS: 1},
+					{Topic: mqtt.LogWarnTopic + "/#", QoS: 1},
+					{Topic: mqtt.LogFatalTopic + "/#", QoS: 1},
+					{Topic: mqtt.LockTopic + "/#", QoS: 1},
+					{Topic: mqtt.UnlockTopic + "/#", QoS: 1},
+					{Topic: mqtt.DeniedAccessTopic + "/#", QoS: 1},
+					{Topic: mqtt.CheckInTopic + "/#", QoS: 1},
+				},
+			}); err != nil {
+				log.Error().
+					Str("error", err.Error()).
+					Str("event", "MQTTSubscribe").
+					Msg(fmt.Sprintf("MQTT failed to subscribe: %v", err))
+			}
 		},
 		OnConnectError: func(err error) {
 			log.Error().
@@ -114,6 +177,12 @@ func runDiaryCmd(cmd *cobra.Command, _ []string) {
 		},
 		ClientConfig: paho.ClientConfig{
 			ClientID: username,
+			OnPublishReceived: []func(paho.PublishReceived) (bool, error){
+				func(publish paho.PublishReceived) (bool, error) {
+					router.Route(publish.Packet.Packet())
+					return true, nil
+				},
+			},
 			OnClientError: func(err error) {
 				log.Error().
 					Str("error", err.Error()).
@@ -164,39 +233,94 @@ func runDiaryCmd(cmd *cobra.Command, _ []string) {
 		}
 	}
 
-	select {
-	case <-reloadCtx.Done():
-		serverConnection.Disconnect(ctx)
+	duration := time.Minute * 2
+	healthCheckTicker := time.NewTicker(duration)
+	for {
+		select {
+		case <-healthCheckTicker.C:
+			log.Info().
+				Str("event", "HealthCheckTicker").
+				Msg("Sending health check")
 
-		if err := notifyReloading(); err != nil {
-			if !errors.Is(err, NotifySocketNotFound) {
-				stop()
-				cancel()
+			for key, value := range lastSeen {
+				unhealthy_at := value.Add(duration)
+				now := time.Now()
+				if unhealthy_at.Before(now) {
+					log.Error().
+						Str("event", "Unhealthy").
+						Str("client_id", key).
+						Str("last_seen", value.String()).
+						Str("unhealthy_after", unhealthy_at.String()).
+						Str("unhealthy_at", now.String()).
+						Msg(fmt.Sprintf("Client %s is now unhealthy", key))
+				} else {
+					log.Info().
+						Str("event", "Healthy").
+						Str("client_id", key).
+						Str("last_seen", value.String()).
+						Str("unhealthy_after", unhealthy_at.String()).
+						Msg(fmt.Sprintf("Saw %s last at: %s", key, value.String()))
+				}
 			}
-		}
+			if _, err = serverConnection.Publish(ctx, &paho.Publish{
+				QoS:     1,
+				Topic:   mqtt.HealthCheckTopic,
+				Payload: []byte(username),
+			}); err != nil {
+				if ctx.Err() == nil {
+					log.Error().
+						Str("error", err.Error()).
+						Str("event", "MQTTPublish").
+						Str("topic", mqtt.HealthCheckTopic).
+						Msg(fmt.Sprintf("Failed to publish: %v", err))
+					continue
+				} else {
+					log.Warn().
+						Str("error", err.Error()).
+						Str("event", "MQTTPublish").
+						Str("topic", mqtt.HealthCheckTopic).
+						Msg(fmt.Sprintf("Published cancelled by context: %v", err))
+					continue
+				}
+			}
+			log.Info().
+				Str("event", "HealthCheckTicker").
+				Msg("Health checks sent")
+			continue
+		case <-reloadCtx.Done():
+			serverConnection.Disconnect(ctx)
 
-		if err = serverConnection.AwaitConnection(ctx); err != nil {
-			log.Warn().
-				Str("error", err.Error()).
-				Str("event", "AwaitConnection").
-				Msg(fmt.Sprintf("Server await connection error: %v", err))
-			if errors.Is(err, context.Canceled) {
-				return
+			if err := notifyReloading(); err != nil {
+				if !errors.Is(err, NotifySocketNotFound) {
+					stop()
+					cancel()
+					break
+				}
 			}
-		}
 
-		if err := notifyReady(); err != nil {
-			if !errors.Is(err, NotifySocketNotFound) {
-				stop()
-				cancel()
+			if err = serverConnection.AwaitConnection(ctx); err != nil {
+				log.Warn().
+					Str("error", err.Error()).
+					Str("event", "AwaitConnection").
+					Msg(fmt.Sprintf("Server await connection error: %v", err))
 			}
+
+			if err := notifyReady(); err != nil {
+				if !errors.Is(err, NotifySocketNotFound) {
+					stop()
+					cancel()
+				}
+			}
+		case <-ctx.Done():
+			log.Info().
+				Str("event", "ContextCancelled").
+				Msg("Termination signal received")
+			syscall.Exit(0)
+		case <-serverConnection.Done():
+			log.Info().
+				Str("event", "ConnectionClosed").
+				Msg("MQTT server connection closed")
+			break
 		}
-	case <-ctx.Done():
-		log.Info().
-			Str("event", "stopping").
-			Msg("Termination signal received")
-		syscall.Exit(0)
 	}
-
-	<-serverConnection.Done()
 }

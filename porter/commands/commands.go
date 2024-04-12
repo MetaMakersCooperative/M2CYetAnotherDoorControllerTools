@@ -109,22 +109,23 @@ func WaitForStatus(mqttConnectionStatus chan messages.MqttStatus) tea.Cmd {
 	}
 }
 
-func PublishUnlock(serverConnection *autopaho.ConnectionManager, ctx context.Context) tea.Cmd {
+func PublishUnlock(serverConnection *autopaho.ConnectionManager, ctx context.Context, clientID string, code int) tea.Cmd {
+	topic := mqtt.UnlockTopic + "/" + clientID
 	return func() tea.Msg {
-		payload := "0001234567|" + time.Now().Format("2006-01-02 15:04:05")
+		payload := fmt.Sprintf("%010d|%s", code, time.Now().Format("2006-01-02 15:04:05"))
 		if _, err := serverConnection.Publish(ctx, &paho.Publish{
-			QoS:     2,
-			Topic:   mqtt.UnlockTopic,
+			QoS:     1,
+			Topic:   topic,
 			Payload: []byte(payload),
 		}); err != nil {
 			return messages.PublishMessage{
-				Topic:   mqtt.UnlockTopic,
+				Topic:   topic,
 				Payload: payload,
 				Err:     err,
 			}
 		}
 		return messages.PublishMessage{
-			Topic:   mqtt.UnlockTopic,
+			Topic:   topic,
 			Payload: payload,
 			Err:     nil,
 		}
@@ -143,7 +144,7 @@ func SubscribeToAccessList(serverConnection *autopaho.ConnectionManager, ctx con
 		}
 		if _, err := serverConnection.Subscribe(ctx, &paho.Subscribe{
 			Subscriptions: []paho.SubscribeOptions{
-				{Topic: mqtt.AccessListTopic, QoS: 2},
+				{Topic: mqtt.AccessListTopic, QoS: 1},
 			},
 		}); err != nil {
 			return messages.SubscribeMessage{Topic: mqtt.AccessListTopic, Err: err}
@@ -165,7 +166,7 @@ func SubscribeToHealthCheck(serverConnection *autopaho.ConnectionManager, ctx co
 		}
 		if _, err := serverConnection.Subscribe(ctx, &paho.Subscribe{
 			Subscriptions: []paho.SubscribeOptions{
-				{Topic: mqtt.HealthCheckTopic, QoS: 2},
+				{Topic: mqtt.HealthCheckTopic, QoS: 1},
 			},
 		}); err != nil {
 			return messages.SubscribeMessage{Topic: mqtt.HealthCheckTopic, Err: err}
@@ -175,15 +176,23 @@ func SubscribeToHealthCheck(serverConnection *autopaho.ConnectionManager, ctx co
 	}
 }
 
-func HealthCheckHandler(serverConnection *autopaho.ConnectionManager, ctx context.Context, username string) tea.Cmd {
+func HealthCheckHandler(serverConnection *autopaho.ConnectionManager, ctx context.Context, clientID string) tea.Cmd {
+	topic := mqtt.CheckInTopic + "/" + clientID
 	return func() tea.Msg {
 		if _, err := serverConnection.Publish(ctx, &paho.Publish{
-			QoS:     2,
-			Topic:   mqtt.CheckInTopic,
-			Payload: []byte(username),
+			QoS:     1,
+			Topic:   topic,
+			Payload: []byte(clientID),
 		}); err != nil {
-			return messages.PublishMessage{Topic: mqtt.CheckInTopic, Payload: username, Err: err}
+			return messages.PublishMessage{Topic: topic, Payload: clientID, Err: err}
 		}
-		return messages.PublishMessage{Topic: mqtt.CheckInTopic, Payload: username, Err: nil}
+		return messages.PublishMessage{Topic: topic, Payload: clientID, Err: nil}
+	}
+}
+
+func FailHealthCheckHandler(clientID string) tea.Cmd {
+	topic := mqtt.CheckInTopic + "/" + clientID
+	return func() tea.Msg {
+		return messages.PublishMessage{Topic: topic, Payload: clientID, Err: errors.New("Set to fail health checks")}
 	}
 }

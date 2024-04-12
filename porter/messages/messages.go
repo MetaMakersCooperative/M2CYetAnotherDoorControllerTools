@@ -2,7 +2,7 @@ package messages
 
 import "github.com/eclipse/paho.golang/autopaho"
 
-type Init interface{}
+type Init int
 
 type MqttMessage struct {
 	Topic   string

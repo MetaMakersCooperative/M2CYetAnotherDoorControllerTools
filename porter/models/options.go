@@ -105,35 +105,36 @@ func changeStateMessage(options Options) tea.Cmd {
 
 func (options Options) Update(msg tea.Msg) (Options, tea.Cmd) {
 	var cmd tea.Cmd
-	if !options.focused || len(options.options) == 0 {
+	if (!options.focused || len(options.options) == 0) && options.options[options.order[options.active]].focused {
 		options.options[options.order[options.active]] = options.options[options.order[options.active]].Blur()
-		return options, cmd
 	}
 	switch msg := msg.(type) {
 	case messages.Init:
 		cmd = changeStateMessage(options)
 	case tea.KeyMsg:
-		switch {
-		case key.Matches(msg, options.keyBindings.up):
-			if options.active-1 < 0 {
-				break
-			}
-			options = options.toggleFocusAt(options.active).toggleFocusAt(options.active - 1)
-		case key.Matches(msg, options.keyBindings.down):
-			if options.active+1 >= len(options.options) {
-				break
-			}
-			options = options.toggleFocusAt(options.active).toggleFocusAt(options.active + 1)
-		case key.Matches(msg, options.keyBindings.check):
-			if options.isRadio {
-				if options.lastToggled == options.active {
+		if options.focused {
+			switch {
+			case key.Matches(msg, options.keyBindings.up):
+				if options.active-1 < 0 {
 					break
 				}
-				options.options[options.order[options.lastToggled]] = options.options[options.order[options.lastToggled]].Toggle()
-				options.lastToggled = options.active
+				options = options.toggleFocusAt(options.active).toggleFocusAt(options.active - 1)
+			case key.Matches(msg, options.keyBindings.down):
+				if options.active+1 >= len(options.options) {
+					break
+				}
+				options = options.toggleFocusAt(options.active).toggleFocusAt(options.active + 1)
+			case key.Matches(msg, options.keyBindings.check):
+				if options.isRadio {
+					if options.lastToggled == options.active {
+						break
+					}
+					options.options[options.order[options.lastToggled]] = options.options[options.order[options.lastToggled]].Toggle()
+					options.lastToggled = options.active
+				}
+				options.options[options.order[options.active]] = options.options[options.order[options.active]].Toggle()
+				cmd = changeStateMessage(options)
 			}
-			options.options[options.order[options.active]] = options.options[options.order[options.active]].Toggle()
-			cmd = changeStateMessage(options)
 		}
 	}
 	return options, cmd

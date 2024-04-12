@@ -10,14 +10,13 @@ type ResponseOptionsWindow struct {
 	Window
 }
 
-func NewResponseOptionsWindow(focused bool, width int) ResponseOptionsWindow {
+func NewResponseOptionsWindow(focused bool, width int, keyLabelPairs ...KeyLabelPair) ResponseOptionsWindow {
 	responseOptions := NewOptions(
 		false,
 		func(state map[string]bool) tea.Msg {
 			return messages.ResponseOptionsSelectionMessage(state)
 		},
-		KeyLabelPair{Key: "access_list", Label: "Error on access list"},
-		KeyLabelPair{Key: "health_check", Label: "Fail health check"},
+		keyLabelPairs...,
 	)
 	responseOptionsWindow := ResponseOptionsWindow{
 		ResponseOptions: responseOptions,

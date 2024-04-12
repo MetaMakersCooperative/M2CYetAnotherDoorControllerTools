@@ -39,7 +39,7 @@ func (model MimicModel) UpdateDimensions(width int, height int) MimicModel {
 
 func (model MimicModel) Init() tea.Cmd {
 	return tea.Batch(
-		func() tea.Msg { return messages.Init(nil) },
+		func() tea.Msg { return messages.Init(1) },
 		commands.Init(
 			model.mqttUri,
 			model.username,
