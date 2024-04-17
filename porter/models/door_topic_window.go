@@ -10,14 +10,13 @@ type DoorTopicWindow struct {
 	Window
 }
 
-func NewDoorTopicWindow(focused bool, width int) DoorTopicWindow {
+func NewDoorTopicWindow(focused bool, width int, keyLabelPairs ...KeyLabelPair) DoorTopicWindow {
 	doorOptions := NewOptions(
 		true,
 		func(state map[string]bool) tea.Msg {
 			return messages.DoorTopicSelectionMessage(state)
 		},
-		KeyLabelPair{Key: "unlock", Label: "Send unlock denied"},
-		KeyLabelPair{Key: "denied", Label: "Send unlock success"},
+		keyLabelPairs...,
 	)
 	doorTopicWindow := DoorTopicWindow{
 		DoorOptions: doorOptions,

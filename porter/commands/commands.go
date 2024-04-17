@@ -109,10 +109,9 @@ func WaitForStatus(mqttConnectionStatus chan messages.MqttStatus) tea.Cmd {
 	}
 }
 
-func PublishUnlock(serverConnection *autopaho.ConnectionManager, ctx context.Context, clientID string, code int) tea.Cmd {
-	topic := mqtt.UnlockTopic + "/" + clientID
+func PublishCardCode(serverConnection *autopaho.ConnectionManager, ctx context.Context, topic string, code string) tea.Cmd {
 	return func() tea.Msg {
-		payload := fmt.Sprintf("%010d|%s", code, time.Now().Format("2006-01-02 15:04:05"))
+		payload := fmt.Sprintf("%010s|%s", code, time.Now().UTC().Format("2006-01-02 15:04:05"))
 		if _, err := serverConnection.Publish(ctx, &paho.Publish{
 			QoS:     1,
 			Topic:   topic,
@@ -129,6 +128,29 @@ func PublishUnlock(serverConnection *autopaho.ConnectionManager, ctx context.Con
 			Payload: payload,
 			Err:     nil,
 		}
+	}
+}
+
+func PublishUnlock(serverConnection *autopaho.ConnectionManager, ctx context.Context, clientID string, code string) tea.Cmd {
+	topic := mqtt.UnlockTopic + "/" + clientID
+	return PublishCardCode(serverConnection, ctx, topic, code)
+}
+
+func PublishDeniedAccess(serverConnection *autopaho.ConnectionManager, ctx context.Context, clientID string, code string) tea.Cmd {
+	topic := mqtt.DeniedAccessTopic + "/" + clientID
+	return PublishCardCode(serverConnection, ctx, topic, code)
+}
+
+func PublishLock(serverConnection *autopaho.ConnectionManager, ctx context.Context, clientID string, code string) tea.Cmd {
+	topic := mqtt.LockTopic + "/" + clientID
+	return PublishCardCode(serverConnection, ctx, topic, code)
+}
+
+func DelayCommandBy(duration time.Duration, cmd tea.Cmd) tea.Cmd {
+	return func() tea.Msg {
+		timer := time.NewTimer(duration)
+		<-timer.C
+		return cmd()
 	}
 }
 

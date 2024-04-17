@@ -3,6 +3,7 @@ package models
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -22,6 +23,9 @@ type StatusWindow struct {
 	maxTabIndex           int
 	accessListState       bool
 	failHealthCheckState  bool
+	unluckState           bool
+	deniedAccessState     bool
+	code                  string
 	Err                   error
 	Spinner               spinner.Model
 	IsConnected           bool
@@ -35,6 +39,8 @@ type StatusWindow struct {
 const (
 	AccessListKey      = "access_list"
 	FailHealthCheckKey = "fail_health_check"
+	DeniedAccessKey    = "denied_access"
+	UnlockKey          = "unlock"
 )
 
 func NewStatusWindow(ctx context.Context, focused bool) StatusWindow {
@@ -62,7 +68,12 @@ func NewStatusWindow(ctx context.Context, focused bool) StatusWindow {
 			KeyLabelPair{Key: AccessListKey, Label: "Error on access list"},
 			KeyLabelPair{Key: FailHealthCheckKey, Label: "Fail health check"},
 		),
-		DoorTopicWindow: NewDoorTopicWindow(false, 0),
+		DoorTopicWindow: NewDoorTopicWindow(
+			false,
+			0,
+			KeyLabelPair{Key: "unlock", Label: "Send unlock success"},
+			KeyLabelPair{Key: "denied_access", Label: "Send unlock denied"},
+		),
 		TextInputWindow: NewTextInputWindow(
 			false,
 			func(value string) tea.Msg {
@@ -147,6 +158,31 @@ func (statusWindow StatusWindow) Update(msg tea.Msg) (StatusWindow, tea.Cmd) {
 		}
 		if statusWindow.failHealthCheckState, exists = msg[FailHealthCheckKey]; !exists {
 			statusWindow.failHealthCheckState = false
+		}
+	case messages.DoorTopicSelectionMessage:
+		var exists bool
+		if statusWindow.unluckState, exists = msg[UnlockKey]; !exists {
+			statusWindow.unluckState = false
+		}
+		if statusWindow.deniedAccessState, exists = msg[DeniedAccessKey]; !exists {
+			statusWindow.deniedAccessState = false
+		}
+	case messages.DoorCodeTextMessage:
+		statusWindow.code = string(msg)
+		if statusWindow.unluckState {
+			cmds = append(
+				cmds,
+				commands.PublishUnlock(statusWindow.serverConnection, statusWindow.ctx, statusWindow.clientID, statusWindow.code),
+				commands.DelayCommandBy(
+					time.Second*8,
+					commands.PublishLock(statusWindow.serverConnection, statusWindow.ctx, statusWindow.clientID, statusWindow.code),
+				),
+			)
+		} else if statusWindow.deniedAccessState {
+			cmds = append(
+				cmds,
+				commands.PublishDeniedAccess(statusWindow.serverConnection, statusWindow.ctx, statusWindow.clientID, statusWindow.code),
+			)
 		}
 	case tea.KeyMsg:
 		if msg.Type == tea.KeyCtrlC {
