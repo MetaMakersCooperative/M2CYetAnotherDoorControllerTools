@@ -16,6 +16,7 @@ RUN mosquitto_passwd -b /opt/passwd_file door_three 'Door_Three!3'
 RUN mosquitto_passwd -b /opt/passwd_file door_four 'Door_Four!4'
 RUN mosquitto_passwd -b /opt/passwd_file door_five 'Door_Five!5'
 RUN mosquitto_passwd -b /opt/passwd_file porter 'BritishD00rMan!'
+RUN mosquitto_passwd -b /opt/passwd_file access_list 'ACce55L12T!'
 
 # =~=~=~=~=~=~= Mosquitto Run =~=~=~=~=~=~=
 FROM mosquitto as mosquitto_broker
