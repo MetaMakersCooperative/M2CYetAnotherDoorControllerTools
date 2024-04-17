@@ -213,15 +213,7 @@ func runDiaryCmd(cmd *cobra.Command, _ []string) {
 			Str("event", "NewConnection").
 			Msg(fmt.Sprintf("New connection start interrupted: %v", err))
 		if errors.Is(err, context.Canceled) {
-			return
-		}
-	}
-	if err = serverConnection.AwaitConnection(ctx); err != nil {
-		log.Warn().
-			Str("error", err.Error()).
-			Str("event", "AwaitConnection").
-			Msg(fmt.Sprintf("Server await connection error: %v", err))
-		if errors.Is(err, context.Canceled) {
+			syscall.Exit(1)
 			return
 		}
 	}
@@ -303,6 +295,8 @@ func runDiaryCmd(cmd *cobra.Command, _ []string) {
 					Str("error", err.Error()).
 					Str("event", "AwaitConnection").
 					Msg(fmt.Sprintf("Server await connection error: %v", err))
+				syscall.Exit(3)
+				return
 			}
 
 			if err := notifyReady(); err != nil {
