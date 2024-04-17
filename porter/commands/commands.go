@@ -176,18 +176,22 @@ func SubscribeToHealthCheck(serverConnection *autopaho.ConnectionManager, ctx co
 	}
 }
 
-func HealthCheckHandler(serverConnection *autopaho.ConnectionManager, ctx context.Context, clientID string) tea.Cmd {
-	topic := mqtt.CheckInTopic + "/" + clientID
+func publishMessage(serverConnection *autopaho.ConnectionManager, ctx context.Context, topic string, payload string) tea.Cmd {
 	return func() tea.Msg {
 		if _, err := serverConnection.Publish(ctx, &paho.Publish{
 			QoS:     1,
 			Topic:   topic,
-			Payload: []byte(clientID),
+			Payload: []byte(payload),
 		}); err != nil {
-			return messages.PublishMessage{Topic: topic, Payload: clientID, Err: err}
+			return messages.PublishMessage{Topic: topic, Payload: payload, Err: err}
 		}
-		return messages.PublishMessage{Topic: topic, Payload: clientID, Err: nil}
+		return messages.PublishMessage{Topic: topic, Payload: payload, Err: nil}
 	}
+}
+
+func HealthCheckHandler(serverConnection *autopaho.ConnectionManager, ctx context.Context, clientID string) tea.Cmd {
+	topic := mqtt.CheckInTopic + "/" + clientID
+	return publishMessage(serverConnection, ctx, topic, clientID)
 }
 
 func FailHealthCheckHandler(clientID string) tea.Cmd {
@@ -195,4 +199,21 @@ func FailHealthCheckHandler(clientID string) tea.Cmd {
 	return func() tea.Msg {
 		return messages.PublishMessage{Topic: topic, Payload: clientID, Err: errors.New("Set to fail health checks")}
 	}
+}
+
+func AccessListHandler(serverConnection *autopaho.ConnectionManager, ctx context.Context, clientID string) tea.Cmd {
+	logInfoTopic := mqtt.LogInfoTopic + "/" + clientID
+	return tea.Batch(
+		publishMessage(serverConnection, ctx, logInfoTopic, "Completed rebuilding cards.txt"),
+		publishMessage(serverConnection, ctx, logInfoTopic, "Rebuilding cards.txt"),
+	)
+}
+
+func FailAccessListHandler(serverConnection *autopaho.ConnectionManager, ctx context.Context, clientID string) tea.Cmd {
+	logInfoTopic := mqtt.LogInfoTopic + "/" + clientID
+	logFatalTopic := mqtt.LogFatalTopic + "/" + clientID
+	return tea.Batch(
+		publishMessage(serverConnection, ctx, logFatalTopic, "Failed to read cards.txt"),
+		publishMessage(serverConnection, ctx, logInfoTopic, "Rebuilding cards.txt"),
+	)
 }

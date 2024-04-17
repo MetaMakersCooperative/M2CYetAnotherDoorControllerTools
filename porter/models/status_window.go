@@ -118,6 +118,12 @@ func (statusWindow StatusWindow) Update(msg tea.Msg) (StatusWindow, tea.Cmd) {
 			} else {
 				cmds = append(cmds, commands.FailHealthCheckHandler(statusWindow.clientID))
 			}
+		case mqtt.AccessListTopic:
+			if !statusWindow.accessListState {
+				cmds = append(cmds, commands.AccessListHandler(statusWindow.serverConnection, statusWindow.ctx, statusWindow.clientID))
+			} else {
+				cmds = append(cmds, commands.FailAccessListHandler(statusWindow.serverConnection, statusWindow.ctx, statusWindow.clientID))
+			}
 		}
 		cmds = append(cmds, commands.WaitForMessage(statusWindow.mqttMessages))
 	case messages.MqttCredentials:

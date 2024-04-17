@@ -51,6 +51,7 @@ func runAccessList(cmd *cobra.Command, args []string) {
 	defer stop()
 
 	done := make(chan bool, 1)
+	fatalErr := make(chan error, 1)
 	queryErr := make(chan error, 1)
 	cardList := make(chan string, 1)
 
@@ -60,6 +61,7 @@ func runAccessList(cmd *cobra.Command, args []string) {
 			Str("error", err.Error()).
 			Str("event", "DatabaseConnection").
 			Msg(fmt.Sprintf("Failed to connect to mysql database: %v", err))
+		syscall.Exit(1)
 		return
 	}
 	defer db.Close()
@@ -104,6 +106,7 @@ func runAccessList(cmd *cobra.Command, args []string) {
 			Str("error", err.Error()).
 			Str("event", "URLParse").
 			Msg(fmt.Sprintf("Url parse Error: %v\n", err))
+		syscall.Exit(2)
 		return
 	}
 
@@ -126,8 +129,9 @@ func runAccessList(cmd *cobra.Command, args []string) {
 				log.Warn().
 					Str("event", "PublishTimeout").
 					Msg("Failed to receive card list")
+				fatalErr <- errors.New("Connection to MQTT broker timed out")
 			case list := <-cardList:
-				if _, err = connectionManager.Publish(ctx, &paho.Publish{
+				if _, err := connectionManager.Publish(ctx, &paho.Publish{
 					QoS:     2,
 					Topic:   mqtt.AccessListTopic,
 					Payload: []byte(list),
@@ -143,22 +147,24 @@ func runAccessList(cmd *cobra.Command, args []string) {
 							Str("event", "AccessListPublish").
 							Msg(fmt.Sprintf("Published cancelled by context: %v", err))
 					}
+					fatalErr <- err
+					return
 				}
+				done <- true
 			case err := <-queryErr:
 				log.Error().
 					Str("error", err.Error()).
 					Str("event", "DatabaseQuery").
 					Msg(fmt.Sprintf("Failed to query database: %v", err))
+				fatalErr <- err
 			}
-
-			done <- true
 		},
 		OnConnectError: func(err error) {
 			log.Error().
 				Str("error", err.Error()).
 				Str("event", "OnConnectError").
 				Msg(fmt.Sprintf("MQTT Connection error: %v", err))
-			done <- true
+			fatalErr <- err
 		},
 		ClientConfig: paho.ClientConfig{
 			ClientID: username,
@@ -167,20 +173,23 @@ func runAccessList(cmd *cobra.Command, args []string) {
 					Str("error", err.Error()).
 					Str("event", "OnClientError").
 					Msg(fmt.Sprintf("MQTT Client error: %v", err))
-				done <- true
+				fatalErr <- err
 			},
 			OnServerDisconnect: func(disconnect *paho.Disconnect) {
+				err := errors.New("Disconnected from MQTT broker")
 				if disconnect.Properties != nil {
 					log.Warn().
 						Str("error", err.Error()).
 						Str("reason", disconnect.Properties.ReasonString).
 						Str("event", "OnServerDisconnect").
 						Msg(fmt.Sprintf("MQTT client disconnect: %v", err))
+					fatalErr <- err
 				} else {
 					log.Warn().
 						Str("error", err.Error()).
 						Str("event", "OnServerDisconnect").
 						Msg(fmt.Sprintf("MQTT client disconnect: %v", err))
+					fatalErr <- err
 				}
 			},
 		},
@@ -188,20 +197,12 @@ func runAccessList(cmd *cobra.Command, args []string) {
 
 	serverConnection, err := autopaho.NewConnection(ctx, clientConfig)
 	if err != nil {
-		log.Warn().
+		log.Error().
 			Str("error", err.Error()).
 			Str("event", "NewConnection").
 			Msg(fmt.Sprintf("New connection start interrupted: %v", err))
 		if errors.Is(err, context.Canceled) {
-			return
-		}
-	}
-	if err = serverConnection.AwaitConnection(ctx); err != nil {
-		log.Warn().
-			Str("error", err.Error()).
-			Str("event", "AwaitConnection").
-			Msg(fmt.Sprintf("Server await connection error: %v", err))
-		if errors.Is(err, context.Canceled) {
+			syscall.Exit(3)
 			return
 		}
 	}
@@ -212,11 +213,17 @@ func runAccessList(cmd *cobra.Command, args []string) {
 			Str("event", "done").
 			Msg("Finished publishing access list")
 		serverConnection.Disconnect(ctx)
+	case err := <-fatalErr:
+		log.Error().
+			Str("error", err.Error()).
+			Str("event", "FatalError").
+			Msg(fmt.Sprintf("Fatal error occurred: %v", err))
+		serverConnection.Disconnect(ctx)
+		syscall.Exit(4)
 	case <-ctx.Done():
 		log.Info().
 			Str("event", "stopping").
 			Msg("Termination signal received")
-		syscall.Exit(0)
 	}
 
 	<-serverConnection.Done()
