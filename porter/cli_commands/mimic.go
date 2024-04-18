@@ -17,7 +17,7 @@ var mimicCmd = &cobra.Command{
 }
 
 func init() {
-	porterCmd.AddCommand(mimicCmd)
+	rootCmd.AddCommand(mimicCmd)
 }
 
 func runMimic(cmd *cobra.Command, args []string) {

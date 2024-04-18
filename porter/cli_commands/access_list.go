@@ -31,7 +31,7 @@ var accessListCmd = &cobra.Command{
 var dbUri string
 
 func init() {
-	porterCmd.AddCommand(accessListCmd)
+	rootCmd.AddCommand(accessListCmd)
 
 	accessListCmd.Flags().StringVarP(&dbUri, "db_uri", "d", "", "Uri used to connect to the database")
 	accessListCmd.MarkFlagRequired("db_uri")

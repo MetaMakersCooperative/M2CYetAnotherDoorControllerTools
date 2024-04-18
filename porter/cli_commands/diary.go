@@ -28,7 +28,7 @@ var diaryCmd = &cobra.Command{
 }
 
 func init() {
-	porterCmd.AddCommand(diaryCmd)
+	rootCmd.AddCommand(diaryCmd)
 }
 
 var (
