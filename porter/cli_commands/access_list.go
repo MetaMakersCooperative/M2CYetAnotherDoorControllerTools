@@ -34,7 +34,6 @@ func init() {
 	rootCmd.AddCommand(accessListCmd)
 
 	accessListCmd.Flags().StringVarP(&dbUri, "db_uri", "d", "", "Uri used to connect to the database")
-	accessListCmd.MarkFlagRequired("db_uri")
 }
 
 type AccessControl struct {
@@ -54,6 +53,22 @@ func runAccessList(cmd *cobra.Command, args []string) {
 	fatalErr := make(chan error, 1)
 	queryErr := make(chan error, 1)
 	cardList := make(chan string, 1)
+
+	if result, found := os.LookupEnv("DB_CONNECTION_URI"); found {
+		dbUri = result
+	}
+
+	if result, found := os.LookupEnv("MQTT_URI"); found {
+		mqttUri = result
+	}
+
+	if result, found := os.LookupEnv("MQTT_USER"); found {
+		username = result
+	}
+
+	if result, found := os.LookupEnv("MQTT_PASSWORD"); found {
+		password = result
+	}
 
 	db, err := sql.Open("mysql", dbUri)
 	if err != nil {

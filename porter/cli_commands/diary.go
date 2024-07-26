@@ -87,6 +87,18 @@ func runDiaryCmd(cmd *cobra.Command, _ []string) {
 	reloadCtx, cancel := signal.NotifyContext(ctx, syscall.SIGHUP)
 	defer cancel()
 
+	if result, found := os.LookupEnv("MQTT_URI"); found {
+		mqttUri = result
+	}
+
+	if result, found := os.LookupEnv("MQTT_USER"); found {
+		username = result
+	}
+
+	if result, found := os.LookupEnv("MQTT_PASSWORD"); found {
+		password = result
+	}
+
 	serverUrl, err := url.Parse(mqttUri)
 	if err != nil {
 		log.Error().

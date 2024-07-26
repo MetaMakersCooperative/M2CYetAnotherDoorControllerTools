@@ -9,7 +9,7 @@ ARG MIGRATE_VERSION=v4.17.0
 FROM eclipse-mosquitto:${MOSQUITTO_VERSION} AS mosquitto
 FROM mysql:${MYSQL_VERSION} AS mysql_database
 FROM golang:${GOLANG_VERSION}-alpine AS golang
-FROM alpine:${GOLANG_VERSION} AS alpine_linux
+FROM alpine:${ALPINE_VERSION} AS alpine_linux
 FROM migrate/migrate:${MIGRATE_VERSION} AS migrate
 
 # =~=~=~=~=~=~= Password File Creation =~=~=~=~=~=~=
@@ -36,7 +36,7 @@ FROM migrate AS migrate_access_database
 
 ENTRYPOINT [ "sh", "-c" ]
 COPY ./migrations /migrations
-CMD ["exec migrate -verbose -database mysql://$DB_CONNECTION_URL -source file:///migrations up" ]
+CMD [ "exec migrate -verbose -database mysql://$DB_CONNECTION_URL -source file:///migrations up" ]
 
 # =~=~=~=~=~=~= Go Build Container =~=~=~=~=~=~=
 FROM golang AS build_porter
@@ -45,8 +45,23 @@ COPY ./porter /opt/porter
 WORKDIR /opt/porter
 RUN go build -o bin/porter main.go
 
+# =~=~=~=~=~=~= Porter Base Container =~=~=~=~=~=~=
+FROM alpine_linux AS porter_base
+RUN addgroup -S porter && adduser -S porter -G porter
+RUN mkdir -p /opt && chown porter:porter /opt
+COPY --from=build_porter --chown=porter:porter /opt/porter/bin/porter /opt/porter
+
+USER porter
+WORKDIR /opt
+
 # =~=~=~=~=~=~= Access List Container =~=~=~=~=~=~=
-FROM alpine_linux AS porter_access_list
+FROM porter_base AS porter_access_list
+
+ENTRYPOINT [ "sh", "-c" ]
+CMD [ "exec ./porter access_list" ]
 
 # =~=~=~=~=~=~= Diary Container =~=~=~=~=~=~=
-FROM alpine_linux AS porter_diary
+FROM porter_base AS porter_diary
+
+ENTRYPOINT [ "sh", "-c" ]
+CMD [ "exec ./porter diary" ]

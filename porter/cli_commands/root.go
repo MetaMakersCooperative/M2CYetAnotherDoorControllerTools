@@ -27,7 +27,4 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&username, "username", "u", "", "Username used to authenicate with the MQTT Broker")
 	rootCmd.PersistentFlags().StringVarP(&password, "password", "p", "", "Password used to authenicate with the MQTT Broker")
 	rootCmd.PersistentFlags().StringVarP(&mqttUri, "mqtt_uri", "m", "", "Uri used to connect to the mqtt broker")
-	rootCmd.MarkFlagRequired("mqtt_uri")
-	rootCmd.MarkFlagRequired("username")
-	rootCmd.MarkFlagRequired("password")
 }

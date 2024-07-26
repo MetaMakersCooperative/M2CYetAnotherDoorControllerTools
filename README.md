@@ -26,6 +26,20 @@ go run main.go diary -u "porter" -p "BritishD00rMan\!" -m mqtt://localhost:1883
 go run main.go mimic -u "door_one" -p "Door_One\!1" -m mqtt://localhost:1883
 ```
 
+## Environment Variables
+
+> NOTE: Environment variables will always override command flags
+
+All commands will use the following environment variables if they are set.
+
+- MQTT username: `MQTT_USER`
+- MQTT password: `MQTT_PASSWORD`
+- MQTT URI: `MQTT_URI`
+
+MySQL database connection URI is only needed for the `access_list` command.
+
+- MySQL Database URI: `DB_CONNECTION_URI`
+
 ## Development & Testing
 
 ### `compose.yml`
