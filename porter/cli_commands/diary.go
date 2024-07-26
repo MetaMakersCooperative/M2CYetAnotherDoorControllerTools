@@ -78,6 +78,64 @@ func notifyReloading() error {
 	return handleNotifyError(state, err, "reloading")
 }
 
+var unhealthyDuration = time.Minute * 5
+var sendHealthCheckDuration = time.Minute * 2
+var checkHealthDuration = time.Second * 15
+
+type ClientState int
+
+const (
+	Healthy = iota
+	Unhealthy
+)
+
+var clientStateNames = map[ClientState]string{
+	Healthy:   "healthy",
+	Unhealthy: "unhealthy",
+}
+
+func (clientState ClientState) String() string {
+	return clientStateNames[clientState]
+}
+
+type ClientHealth struct {
+	LastSeen       time.Time
+	State          ClientState
+	UnhealthyAfter time.Time
+}
+
+func NewClientHealth() ClientHealth {
+	now := time.Now()
+	return ClientHealth{
+		now,
+		Healthy,
+		now.Add(unhealthyDuration),
+	}
+}
+
+func (clientHealth ClientHealth) Transitioned() (ClientHealth, bool) {
+	now := time.Now()
+	switch clientHealth.State {
+	case Healthy:
+		if clientHealth.UnhealthyAfter.Before(now) {
+			clientHealth.State = Unhealthy
+			return clientHealth, true
+		}
+	case Unhealthy:
+		if clientHealth.UnhealthyAfter.After(now) {
+			clientHealth.State = Healthy
+			return clientHealth, true
+		}
+	}
+	return clientHealth, false
+}
+
+func (clientHealth ClientHealth) BumpLastSeen() ClientHealth {
+	clientHealth.LastSeen = time.Now()
+	clientHealth.UnhealthyAfter = clientHealth.LastSeen.Add(unhealthyDuration)
+	return clientHealth
+}
+
 func runDiaryCmd(cmd *cobra.Command, _ []string) {
 	// App will run until cancelled by user (e.g. ctrl-c)
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGUSR1, syscall.SIGTERM)
@@ -109,11 +167,13 @@ func runDiaryCmd(cmd *cobra.Command, _ []string) {
 		return
 	}
 
-	lastSeen := make(map[string]time.Time, 0)
+	lastSeen := make(map[string]ClientHealth, 0)
 
 	router := paho.NewStandardRouter()
 	router.RegisterHandler(mqtt.RootLevel+"/#", func(publish *paho.Publish) {
+
 		topicChunks := strings.Split(publish.Topic, "/")
+
 		if len(topicChunks) < 3 {
 			log.Error().
 				Str("event", "TopicParser").
@@ -127,8 +187,7 @@ func runDiaryCmd(cmd *cobra.Command, _ []string) {
 				Msg("Unable to parse topic! Received less than 3 chunks")
 			return
 		}
-		clientID := topicChunks[len(topicChunks)-1]
-		lastSeen[clientID] = time.Now()
+
 		var logLevel *zerolog.Event
 		switch topicChunks[1] {
 		case mqtt.LogFatalLevel:
@@ -138,6 +197,16 @@ func runDiaryCmd(cmd *cobra.Command, _ []string) {
 		default:
 			logLevel = log.Info()
 		}
+
+		clientID := topicChunks[len(topicChunks)-1]
+		// Any message received from a client should bump
+		// its last seem value
+		if client, found := lastSeen[clientID]; found {
+			lastSeen[clientID] = client.BumpLastSeen()
+		} else {
+			lastSeen[clientID] = NewClientHealth()
+		}
+
 		logLevel.
 			Str("event", "PublishHandler").
 			Uint16("packet_id", publish.PacketID).
@@ -237,35 +306,44 @@ func runDiaryCmd(cmd *cobra.Command, _ []string) {
 		}
 	}
 
-	duration := time.Minute * 2
-	healthCheckTicker := time.NewTicker(duration)
+	sendHealthCheckTicker := time.NewTicker(sendHealthCheckDuration)
+	checkHealthTicker := time.NewTicker(checkHealthDuration)
 	for {
 		select {
-		case <-healthCheckTicker.C:
+		case <-checkHealthTicker.C:
+			for key, clientHealth := range lastSeen {
+				newClientHealth, transitioned := clientHealth.Transitioned()
+				if transitioned {
+					lastSeen[key] = newClientHealth
+					switch newClientHealth.State {
+					case Unhealthy:
+						log.Error().
+							Str("event", "Unhealthy").
+							Str("client_id", key).
+							Str("from", clientHealth.State.String()).
+							Str("to", newClientHealth.State.String()).
+							Str("last_seen", newClientHealth.LastSeen.String()).
+							Str("unhealthy_after", newClientHealth.UnhealthyAfter.String()).
+							Str("unhealthy_at", time.Now().String()).
+							Msg(fmt.Sprintf("Client %s is now unhealthy", key))
+					case Healthy:
+						log.Info().
+							Str("event", "Healthy").
+							Str("client_id", key).
+							Str("from", clientHealth.State.String()).
+							Str("to", newClientHealth.State.String()).
+							Str("last_seen", newClientHealth.LastSeen.String()).
+							Str("unhealthy_after", newClientHealth.UnhealthyAfter.String()).
+							Msg(fmt.Sprintf("Client %s is now healthy", key))
+					}
+				}
+			}
+
+		case <-sendHealthCheckTicker.C:
 			log.Info().
 				Str("event", "HealthCheckTicker").
 				Msg("Sending health check")
 
-			for key, value := range lastSeen {
-				unhealthy_at := value.Add(duration)
-				now := time.Now()
-				if unhealthy_at.Before(now) {
-					log.Error().
-						Str("event", "Unhealthy").
-						Str("client_id", key).
-						Str("last_seen", value.String()).
-						Str("unhealthy_after", unhealthy_at.String()).
-						Str("unhealthy_at", now.String()).
-						Msg(fmt.Sprintf("Client %s is now unhealthy", key))
-				} else {
-					log.Info().
-						Str("event", "Healthy").
-						Str("client_id", key).
-						Str("last_seen", value.String()).
-						Str("unhealthy_after", unhealthy_at.String()).
-						Msg(fmt.Sprintf("Saw %s last at: %s", key, value.String()))
-				}
-			}
 			if _, err = serverConnection.Publish(ctx, &paho.Publish{
 				QoS:     1,
 				Topic:   mqtt.HealthCheckTopic,
@@ -277,20 +355,21 @@ func runDiaryCmd(cmd *cobra.Command, _ []string) {
 						Str("event", "MQTTPublish").
 						Str("topic", mqtt.HealthCheckTopic).
 						Msg(fmt.Sprintf("Failed to publish: %v", err))
-					continue
 				} else {
 					log.Warn().
 						Str("error", err.Error()).
 						Str("event", "MQTTPublish").
 						Str("topic", mqtt.HealthCheckTopic).
 						Msg(fmt.Sprintf("Published cancelled by context: %v", err))
-					continue
 				}
+
+				continue
 			}
+
 			log.Info().
 				Str("event", "HealthCheckTicker").
 				Msg("Health checks sent")
-			continue
+
 		case <-reloadCtx.Done():
 			serverConnection.Disconnect(ctx)
 
@@ -317,11 +396,13 @@ func runDiaryCmd(cmd *cobra.Command, _ []string) {
 					cancel()
 				}
 			}
+
 		case <-ctx.Done():
 			log.Info().
 				Str("event", "ContextCancelled").
 				Msg("Termination signal received")
 			syscall.Exit(0)
+
 		case <-serverConnection.Done():
 			log.Info().
 				Str("event", "ConnectionClosed").
