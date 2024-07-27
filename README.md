@@ -1,4 +1,4 @@
-# Door Controller MQTT
+# M2C Yet Another Door Controller Tools
 
 > This project is still a work in progress. Please use with caution until a stable release has been published!
 
