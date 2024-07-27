@@ -2,7 +2,7 @@
 
 > This project is still a work in progress. Please use with caution until a stable release has been published!
 
-This repository contains a CLI tool designed to be used with the [MetaMakersCooperative/M2C_Yet_Another_Door_Controller](https://github.com/MetaMakersCooperative/M2C_Yet_Another_Door_Controller) Arduino project. The tools help with testing, updating the card access list, and logging events published by the deployed door controllers.
+This repository contains a CLI tool designed to be used with the [MetaMakersCooperative/M2CYetAnotherDoorController](https://github.com/MetaMakersCooperative/M2CYetAnotherDoorController) Arduino project. The tools help with testing, updating the card access list, and logging events published by the deployed door controllers.
 
 ## Building
 
