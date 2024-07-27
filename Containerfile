@@ -50,6 +50,7 @@ FROM alpine_linux AS porter_base
 RUN addgroup -S porter && adduser -S porter -G porter
 RUN mkdir -p /opt && chown porter:porter /opt
 COPY --from=build_porter --chown=porter:porter /opt/porter/bin/porter /opt/porter
+COPY ./LICENSE /opt/LICENSE
 
 USER porter
 WORKDIR /opt
