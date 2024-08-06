@@ -105,7 +105,7 @@ func runAccessList(cmd *cobra.Command, args []string) {
 			log.Info().
 				Str("event", "AddingCard").
 				Int("card_number", code.CardVal).
-				Msg(fmt.Sprintf("Adding card %d to list", code.CardVal))
+				Msg(fmt.Sprintf("Adding card %010d to list", code.CardVal))
 			list += fmt.Sprintf("%010d", code.CardVal)
 			if idx < len(accessCodes)-1 {
 				list += "\n"
